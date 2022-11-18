@@ -201,6 +201,20 @@ void Payload::buttonGenerate()
 
         return;
     }
+    else
+    {
+        for ( auto& listener : HavocX::Teamserver.Listeners )
+        {
+            if ( ComboListener->currentText().toStdString() == listener.Name )
+            {
+                if ( listener.Status.compare( "Offline" ) == 0 )
+                {
+                    MessageBox( "Payload Generator Error", "Selected listener is offline", QMessageBox::Critical );
+                    return;
+                }
+            }
+        }
+    }
 
     ConsoleText->clear();
     ButtonClicked = true;
@@ -289,6 +303,10 @@ auto Payload::addConsoleLog( QString MsgType, QString Message ) -> void
     else if ( MsgType.compare( "Error" ) == 0 )
     {
         ConsoleText->append( Util::ColorText::Red( "[-] " ) + Message );
+    }
+    else if ( MsgType.compare( "Warning" ) == 0 || MsgType.compare( "Warn" ) == 0 )
+    {
+        ConsoleText->append( Util::ColorText::Yellow( "[!] " ) + Message );
     }
     else
     {
