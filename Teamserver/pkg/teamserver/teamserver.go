@@ -2,6 +2,7 @@ package teamserver
 
 import "C"
 import (
+	"Havoc/pkg/agent"
 	"Havoc/pkg/db"
 	"Havoc/pkg/webhook"
 	"bytes"
@@ -33,8 +34,6 @@ import (
 )
 
 // maybe move this to cmd
-
-var HavocTeamserver *Teamserver
 
 func NewTeamserver() *Teamserver {
 	return new(Teamserver)
@@ -206,6 +205,26 @@ func (t *Teamserver) Start() {
 				Secure:       listener.Secure,
 			}
 
+			if listener.Cert != nil {
+				var Found = true
+
+				if _, err = os.Stat(listener.Cert.Cert); !os.IsNotExist(err) {
+					HandlerData.Cert.Cert = listener.Cert.Cert
+				} else {
+					Found = false
+				}
+
+				if _, err = os.Stat(listener.Cert.Key); !os.IsNotExist(err) {
+					HandlerData.Cert.Key = listener.Cert.Key
+				} else {
+					Found = false
+				}
+
+				if !Found {
+					logger.Error("Failed to find Cert/Key Path for listener '" + listener.Name + "'. Using randomly generated certs")
+				}
+			}
+
 			if listener.Response != nil {
 				HandlerData.Response.Headers = listener.Response.Headers
 			}
@@ -276,7 +295,7 @@ func (t *Teamserver) Start() {
 
 		switch listener["Protocol"] {
 
-		case handlers.DEMON_HTTP, handlers.DEMON_HTTPS:
+		case handlers.AGENT_HTTP, handlers.AGENT_HTTPS:
 
 			var (
 				Data        = make(map[string]any)
@@ -330,7 +349,7 @@ func (t *Teamserver) Start() {
 
 			break
 
-		case handlers.DEMON_EXTERNAL:
+		case handlers.AGENT_EXTERNAL:
 
 			var (
 				Data        = make(map[string]any)
@@ -355,7 +374,7 @@ func (t *Teamserver) Start() {
 
 			break
 
-		case handlers.DEMON_PIVOT_SMB:
+		case handlers.AGENT_PIVOT_SMB:
 
 			var (
 				Data        = make(map[string]any)
@@ -572,6 +591,38 @@ func (t *Teamserver) EventBroadcast(ExceptClient string, pk packager.Package) {
 			err := t.SendEvent(ClientID, pk)
 			if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 				logger.Error("SendEvent error: ", colors.Red(err))
+			}
+		}
+	}
+}
+
+func (t *Teamserver) EventNewDemon(DemonAgent *agent.Agent) packager.Package {
+	return events.Demons.NewDemon(DemonAgent)
+}
+
+func (t *Teamserver) EventAgentMark(AgentID, Mark string) {
+	var pk = events.Demons.MarkAs(AgentID, Mark)
+
+	t.EventAppend(pk)
+	t.EventBroadcast("", pk)
+}
+
+func (t *Teamserver) EventListenerError(ListenerName string, Error error) {
+	var pk = events.Listener.ListenerError("", ListenerName, Error)
+
+	t.EventAppend(pk)
+	t.EventBroadcast("", pk)
+
+	// also remove the listener from the init packages.
+	for EventID := range t.EventsList {
+		if t.EventsList[EventID].Head.Event == packager.Type.Listener.Type {
+			if t.EventsList[EventID].Body.SubEvent == packager.Type.Listener.Add {
+				if name, ok := t.EventsList[EventID].Body.Info["Name"]; ok {
+					if name == ListenerName {
+						t.EventsList[EventID].Body.Info["Status"] = "Offline"
+						t.EventsList[EventID].Body.Info["Error"] = Error.Error()
+					}
+				}
 			}
 		}
 	}

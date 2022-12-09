@@ -234,19 +234,54 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 							}
 						}
 					} else {
-						logger.Debug("Is not Demon")
-
 						for _, a := range t.Service.Agents {
 							if a.MagicValue == fmt.Sprintf("0x%x", t.Agents.Agents[i].Info.MagicValue) {
 
 								// Set agent type
 								AgentType = a.Name
 
-								// Send command to agent service
-								a.SendTask(pk.Body.Info, t.Agents.Agents[i].ToMap())
+								if pk.Body.Info["CommandID"] == "Python Plugin" {
+									logr.LogrInstance.AddAgentInput(AgentType, pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
 
-								// log agent input
-								logr.LogrInstance.AddAgentInput(a.Name, pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
+									if pk.Head.OneTime == "true" {
+										return
+									}
+
+									var backups = map[string]interface{}{
+										"TaskID":      pk.Body.Info["TaskID"].(string),
+										"DemonID":     DemonID,
+										"CommandID":   "",
+										"CommandLine": pk.Body.Info["CommandLine"].(string),
+										"AgentType":   AgentType,
+									}
+
+									if _, ok := pk.Body.Info["CommandID"].(string); ok {
+										backups["CommandID"] = pk.Body.Info["CommandID"]
+									}
+
+									if _, ok := pk.Body.Info["TaskMessage"].(string); ok {
+										backups["TaskMessage"] = pk.Body.Info["TaskMessage"]
+									}
+
+									for k := range pk.Body.Info {
+										delete(pk.Body.Info, k)
+									}
+
+									pk.Body.Info = backups
+
+									t.EventAppend(pk)
+									t.EventBroadcast(pk.Head.User, pk)
+
+									return
+
+								} else {
+									// Send command to agent service
+									a.SendTask(pk.Body.Info, t.Agents.Agents[i].ToMap())
+
+									// log agent input
+									logr.LogrInstance.AddAgentInput(a.Name, pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
+								}
+
 							}
 						}
 					}
@@ -305,7 +340,7 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 			var Protocol = pk.Body.Info["Protocol"].(string)
 			switch Protocol {
 
-			case handlers.DEMON_HTTP, handlers.DEMON_HTTPS:
+			case handlers.AGENT_HTTP, handlers.AGENT_HTTPS:
 				var (
 					HostBind string
 					Hosts    []string
@@ -438,7 +473,7 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 
 				break
 
-			case handlers.DEMON_PIVOT_SMB:
+			case handlers.AGENT_PIVOT_SMB:
 				var (
 					SmdConfig handlers.SMBConfig
 					found     bool
@@ -467,7 +502,7 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 
 				break
 
-			case handlers.DEMON_EXTERNAL:
+			case handlers.AGENT_EXTERNAL:
 				var (
 					ExtConfig handlers.ExternalConfig
 					found     bool
@@ -522,7 +557,7 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 			var Protocol = pk.Body.Info["Protocol"].(string)
 			switch Protocol {
 
-			case handlers.DEMON_HTTP, handlers.DEMON_HTTPS:
+			case handlers.AGENT_HTTP, handlers.AGENT_HTTPS:
 				var (
 					HostBind string
 					Hosts    []string

