@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"reflect"
 
 	"Havoc/pkg/common"
 	"Havoc/pkg/common/crypt"
@@ -138,16 +139,29 @@ func BuildPayloadMessage(Jobs []Job, AesKey []byte, AesIv []byte) []byte {
 
 				break
 
+			case bool:
+				var boolean = make([]byte, 4)
+
+				if job.Data[i].(bool) {
+					binary.LittleEndian.PutUint32(boolean, 1)
+				} else {
+					binary.LittleEndian.PutUint32(boolean, 0)
+				}
+				
+				DataPayload = append(DataPayload, boolean...)
+
+				break
+
 			default:
 				logger.Error(fmt.Sprintf("Could not package, unknown data type: %v", job.Data[i]))
 			}
 		}
 
-		binary.LittleEndian.PutUint32(RequestID, job.RequestID)
-		PayloadPackage = append(PayloadPackage, RequestID...)
-
 		binary.LittleEndian.PutUint32(DataCommandID, job.Command)
 		PayloadPackage = append(PayloadPackage, DataCommandID...)
+
+		binary.LittleEndian.PutUint32(RequestID, job.RequestID)
+		PayloadPackage = append(PayloadPackage, RequestID...)
 
 		binary.LittleEndian.PutUint32(PayloadPackageSize, uint32(len(DataPayload)))
 		PayloadPackage = append(PayloadPackage, PayloadPackageSize...)
@@ -209,7 +223,7 @@ func RegisterInfoToInstance(Header Header, RegisterInfo map[string]any) *Agent {
 		err error
 	)
 
-	agent.NameID = fmt.Sprintf("%x", Header.AgentID)
+	agent.NameID = fmt.Sprintf("%08x", Header.AgentID)
 	agent.Info.MagicValue = Header.MagicValue
 
 	if val, ok := RegisterInfo["Hostname"]; ok {
@@ -263,8 +277,15 @@ func RegisterInfoToInstance(Header Header, RegisterInfo map[string]any) *Agent {
 		}
 	}
 
+	// Updated OS Version handling
 	if val, ok := RegisterInfo["OS Version"]; ok {
-		agent.Info.OSVersion = val.(string)
+	    // Assuming val is a string representing the OS version, split it by '.' to get the version parts
+	    versionParts := strings.Split(val.(string), ".")
+	    OsVersion := make([]int, len(versionParts))
+	    for i, part := range versionParts {
+		OsVersion[i], _ = strconv.Atoi(part)
+	    }
+	    agent.Info.OSVersion = getWindowsVersionString(OsVersion)
 	}
 
 	if val, ok := RegisterInfo["OS Build"]; ok {
@@ -274,9 +295,30 @@ func RegisterInfoToInstance(Header Header, RegisterInfo map[string]any) *Agent {
 	if val, ok := RegisterInfo["OS Arch"]; ok {
 		agent.Info.OSArch = val.(string)
 	}
+	
+	if val, ok := RegisterInfo["SleepDelay"]; ok {
+		switch v := val.(type) {
+		case float64:
+			agent.Info.SleepDelay = int(v)
+		case string:
+			agent.Info.SleepDelay, err = strconv.Atoi(v)
+			if err != nil {
+				logger.DebugError("Couldn't parse SleepDelay integer from string: " + err.Error())
+				agent.Info.SleepDelay = 0
+			}
+		default:
+			// handle unexpected type
+			logger.DebugError("Unexpected type for SleepDelay: " + reflect.TypeOf(v).String())
+			agent.Info.SleepDelay = 0
+		}
+	}
+	
 
 	agent.Info.FirstCallIn = time.Now().Format("02/01/2006 15:04:05")
-	agent.Info.LastCallIn = time.Now().Format("02-01-2006 15:04:05.999")
+	
+	agent.Info.LastCallIn = time.Now().Format("02-01-2006 15:04:05")
+	
+
 	agent.BackgroundCheck = false
 	agent.Active = true
 
@@ -295,8 +337,10 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 		InternalIP   string
 		ProcessName  string
 		ProcessPID   int
+		ProcessTID   int
 		OsVersion    []int
 		OsArch       int
+		BaseAddress  int64
 		Elevated     int
 		ProcessArch  int
 		ProcessPPID  int
@@ -312,6 +356,7 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 		[ Magic Value  ] 4 bytes
 		[ Agent ID     ] 4 bytes
 		[ COMMAND ID   ] 4 bytes
+		[ Request ID   ] 4 bytes
 		[ AES KEY      ] 32 bytes
 		[ AES IV       ] 16 bytes
 		AES Encrypted {
@@ -325,6 +370,7 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 			[ Parent  PID  ] 4 bytes
 			[ Process Arch ] 4 bytes
 			[ Elevated     ] 4 bytes
+			[ Base Address ] 8 bytes
 			[ OS Info      ] ( 5 * 4 ) bytes
 			[ OS Arch      ] 4 bytes
 			..... more
@@ -384,20 +430,24 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 					"ExternIP: %v\n",
 				Hostname, Username, DomainName, InternalIP, ExternalIP))
 
-			ProcessName = Parser.ParseString()
-			ProcessPID = Parser.ParseInt32()
+			ProcessName = Parser.ParseUTF16String()
+			ProcessPID  = Parser.ParseInt32()
+			ProcessTID  = Parser.ParseInt32()
 			ProcessPPID = Parser.ParseInt32()
 			ProcessArch = Parser.ParseInt32()
 			Elevated = Parser.ParseInt32()
+			BaseAddress = Parser.ParseInt64()
 
 			logger.Debug(fmt.Sprintf(
 				"\n"+
-					"ProcessName: %v\n"+
-					"ProcessPID : %v\n"+
-					"ProcessPPID: %v\n"+
-					"ProcessArch: %v\n"+
-					"Elevated   : %v\n",
-				ProcessName, ProcessPID, ProcessPPID, ProcessArch, Elevated))
+					"ProcessName : %v\n"+
+					"ProcessPID  : %v\n"+
+					"ProcessTID  : %v\n"+
+					"ProcessPPID : %v\n"+
+					"ProcessArch : %v\n"+
+					"Elevated    : %v\n"+
+					"Base Address: 0x%x\n",
+				ProcessName, ProcessPID, ProcessTID, ProcessPPID, ProcessArch, Elevated, BaseAddress))
 
 			OsVersion = []int{Parser.ParseInt32(), Parser.ParseInt32(), Parser.ParseInt32(), Parser.ParseInt32(), Parser.ParseInt32()}
 			OsArch = Parser.ParseInt32()
@@ -414,10 +464,10 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 
 			Session.Active = true
 
-			Session.NameID = fmt.Sprintf("%x", DemonID)
+			Session.NameID = fmt.Sprintf("%08x", DemonID)
 			Session.Info.MagicValue = MagicValue
 			Session.Info.FirstCallIn = time.Now().Format("02/01/2006 15:04:05")
-			Session.Info.LastCallIn = time.Now().Format("02-01-2006 15:04:05.999")
+			Session.Info.LastCallIn = time.Now().Format("02-01-2006 15:04:05")
 			Session.Info.Hostname = Hostname
 			Session.Info.DomainName = DomainName
 			Session.Info.Username = Username
@@ -478,9 +528,11 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 			process := strings.Split(ProcessName, "\\")
 
 			Session.Info.ProcessName = process[len(process)-1]
-			Session.Info.ProcessPID = ProcessPID
+			Session.Info.ProcessPID  = ProcessPID
+			Session.Info.ProcessTID  = ProcessTID
 			Session.Info.ProcessPPID = ProcessPPID
 			Session.Info.ProcessPath = ProcessName
+			Session.Info.BaseAddress = BaseAddress
 			Session.BackgroundCheck = false
 
 			/*for {
@@ -523,8 +575,6 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 			                      RoutineFunc.EventAppend(pk)
 			                      RoutineFunc.EventBroadcast("", pk)
 
-			                      go PivotSession.BackgroundUpdateLastCallbackUI(RoutineFunc)
-
 			                      Session.Pivots.Links = append(Session.Pivots.Links, PivotSession)
 
 			                      PivotSession.Pivots.Parent = Session
@@ -556,12 +606,17 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 }
 
 // check that the request the agent is valid
-func (a *Agent) IsKnownRequestID(RequestID uint32, CommandID uint32) bool {
+func (a *Agent) IsKnownRequestID(teamserver TeamServer, RequestID uint32, CommandID uint32) bool {
 	// some commands are always accepted because they don't follow the "send task and get response" format
 	switch CommandID {
 	case COMMAND_SOCKET:
 		return true
 	case COMMAND_PIVOT:
+		return true
+	}
+
+	if teamserver.SendLogs() && CommandID == BEACON_OUTPUT {
+		// if SendLogs is on, accept all BEACON_OUTPUT so that the agent can send logs
 		return true
 	}
 
@@ -608,7 +663,7 @@ func (a *Agent) GetQueuedJobs() []Job {
 	var JobsSize = 0
 	var NumJobs = 0
 
-	// make sure we return a number of jobs that doesn't exeed DEMON_MAX_RESPONSE_LENGTH
+	// make sure we return a number of jobs that doesn't exceed DEMON_MAX_RESPONSE_LENGTH
 	for _, job := range a.JobQueue {
 
 		for i := range job.Data {
@@ -654,6 +709,10 @@ func (a *Agent) GetQueuedJobs() []Job {
 				JobsSize += 1
 				break
 
+			case bool:
+				JobsSize += 4
+				break
+
 			default:
 				logger.Error(fmt.Sprintf("Could determine package size, unknown data type: %v", job.Data[i]))
 			}
@@ -678,47 +737,10 @@ func (a *Agent) GetQueuedJobs() []Job {
 }
 
 func (a *Agent) UpdateLastCallback(Teamserver TeamServer) {
-	var (
-		OldLastCallIn, _ = time.Parse("02-01-2006 15:04:05", a.Info.LastCallIn)
-		NewLastCallIn, _ = time.Parse("02-01-2006 15:04:05", time.Now().Format("02-01-2006 15:04:05"))
-	)
-
 	a.Info.LastCallIn = time.Now().Format("02-01-2006 15:04:05")
+	Teamserver.AgentUpdate(a)
 
-	diff := NewLastCallIn.Sub(OldLastCallIn)
-
-	Teamserver.AgentLastTimeCalled(a.NameID, diff.String(), a.Info.LastCallIn, a.Info.SleepDelay, a.Info.SleepJitter, a.Info.KillDate, a.Info.WorkingHours)
-}
-
-func (a *Agent) BackgroundUpdateLastCallbackUI(teamserver TeamServer) {
-	if !a.BackgroundCheck {
-		a.BackgroundCheck = true
-	} else {
-		return
-	}
-
-	for {
-		if !a.Active {
-			if len(a.Reason) == 0 {
-				a.Reason = "Dead"
-			}
-
-			Callback := map[string]string{"Output": a.Reason}
-			teamserver.AgentConsole(a.NameID, COMMAND_NOJOB, Callback)
-			return
-		}
-
-		var (
-			OldLastCallIn, _ = time.Parse("02-01-2006 15:04:05", a.Info.LastCallIn)
-			NewLastCallIn, _ = time.Parse("02-01-2006 15:04:05", time.Now().Format("02-01-2006 15:04:05"))
-		)
-
-		diff := NewLastCallIn.Sub(OldLastCallIn)
-
-		teamserver.AgentLastTimeCalled(a.NameID, diff.String(), a.Info.LastCallIn, a.Info.SleepDelay, a.Info.SleepJitter, a.Info.KillDate, a.Info.WorkingHours)
-
-		time.Sleep(time.Second * 1)
-	}
+	Teamserver.AgentLastTimeCalled(a.NameID, a.Info.LastCallIn, a.Info.SleepDelay, a.Info.SleepJitter, a.Info.KillDate, a.Info.WorkingHours)
 }
 
 func (a *Agent) PivotAddJob(job Job) {
@@ -791,7 +813,7 @@ func (a *Agent) PivotAddJob(job Job) {
 	pivots.Parent.JobQueue = append(pivots.Parent.JobQueue, PivotJob)
 }
 
-func (a *Agent) DownloadAdd(FileID int, FilePath string, FileSize int) error {
+func (a *Agent) DownloadAdd(FileID int, FilePath string, FileSize int64) error {
 	var (
 		err      error
 		download = &Download{
@@ -855,7 +877,7 @@ func (a *Agent) DownloadWrite(FileID int, data []byte) error {
 					return errors.New("Failed to write to file [" + a.Downloads[i].LocalFile + "]: " + err.Error())
 				}
 
-				a.Downloads[i].Progress += len(data)
+				a.Downloads[i].Progress += int64(len(data))
 			}
 			return nil
 		}
@@ -897,10 +919,16 @@ func (a *Agent) PortFwdNew(SocketID, LclAddr, LclPort, FwdAddr, FwdPort int, Tar
 		Target:  Target,
 	}
 
+	a.PortFwdsMtx.Lock()
+	
 	a.PortFwds = append(a.PortFwds, portfwd)
+
+	a.PortFwdsMtx.Unlock()
 }
 
 func (a *Agent) PortFwdGet(SocketID int) *PortFwd {
+	a.PortFwdsMtx.Lock()
+	defer a.PortFwdsMtx.Unlock()
 
 	for i := range a.PortFwds {
 
@@ -917,117 +945,84 @@ func (a *Agent) PortFwdGet(SocketID int) *PortFwd {
 	return nil
 }
 
+func (a *Agent) PortFwdIsOpen(SocketID int) (bool, error) {
+	PortFwd := a.PortFwdGet(SocketID)
+
+	if PortFwd != nil {
+		return PortFwd.Conn != nil, nil
+	} else {
+		return false, fmt.Errorf("rportfwd socket id %x not found", SocketID)
+	}
+}
+
 func (a *Agent) PortFwdOpen(SocketID int) error {
 	var (
-		err   error
-		found bool
+		err     error
+		PortFwd *PortFwd
 	)
 
-	for i := range a.PortFwds {
+	PortFwd = a.PortFwdGet(SocketID)
 
-		/* check if it's our rportfwd connection */
-		if a.PortFwds[i].SocktID == SocketID {
-
-			/* alright we found our socket */
-			found = true
-
+	if PortFwd != nil {
+		if PortFwd.Conn == nil {
 			/* open the connection to the target */
-			a.PortFwds[i].Conn, err = net.Dial("tcp", a.PortFwds[i].Target)
-			if err != nil {
-				return err
-			}
-
-			break;
+			PortFwd.Conn, err = net.Dial("tcp", PortFwd.Target)
+			return err
+		} else {
+			return errors.New("rportfwd connection is already open")
 		}
-
-	}
-
-	if !found {
+	} else {
 		return fmt.Errorf("rportfwd socket id %x not found", SocketID)
 	}
-
-	return nil
 }
 
 func (a *Agent) PortFwdWrite(SocketID int, data []byte) error {
-	var found bool
+	var PortFwd *PortFwd
 
-	for i := range a.PortFwds {
+	PortFwd = a.PortFwdGet(SocketID)
 
-		/* check if it's our rportfwd connection */
-		if a.PortFwds[i].SocktID == SocketID {
-
-			/* alright we found our socket */
-			found = true
-
-			if a.PortFwds[i].Conn != nil {
-
-				/* write to the connection */
-				_, err := a.PortFwds[i].Conn.Write(data)
-				if err != nil {
-					return err
-				}
-
-				break
-
-			} else {
-				return errors.New("portfwd connection is empty")
-			}
-
-			break;
+	if PortFwd != nil {
+		/* write to the connection */
+		if PortFwd.Conn != nil {
+			_, err := PortFwd.Conn.Write(data)
+			return err
+		} else {
+			return errors.New("rportfwd connection is empty")
 		}
-
-	}
-
-	if !found {
+	} else {
 		return fmt.Errorf("rportfwd socket id %x not found", SocketID)
 	}
-
-	return nil
 }
 
 func (a *Agent) PortFwdRead(SocketID int) ([]byte, error) {
 	var (
-		found = false
-		data  = bytes.Buffer{}
+		data    = bytes.Buffer{}
+		PortFwd *PortFwd
 	)
 
-	for i := range a.PortFwds {
+	PortFwd = a.PortFwdGet(SocketID)
 
-		/* check if it's our rportfwd connection */
-		if a.PortFwds[i].SocktID == SocketID {
-
-			/* alright we found our socket */
-			found = true
-
-			if a.PortFwds[i].Conn != nil {
-
-				/* read from our socket to the data buffer or return error */
-				_, err := io.Copy(&data, a.PortFwds[i].Conn)
-				if err != nil {
-					return nil, err
-				}
-
-				break
-
-			} else {
-				return nil, errors.New("portfwd connection is empty")
+	if PortFwd != nil {
+		if PortFwd.Conn != nil {
+			/* read from our socket to the data buffer or return error */
+			_, err := io.Copy(&data, PortFwd.Conn)
+			if err != nil {
+				return nil, err
 			}
 
-			break;
+			/* return the read data */
+			return data.Bytes(), nil
+		} else {
+			return nil, errors.New("rportfwd connection is empty")
 		}
-
-	}
-
-	if !found {
+	} else {
 		return nil, fmt.Errorf("rportfwd socket id %x not found", SocketID)
 	}
-
-	/* return the read data */
-	return data.Bytes(), nil
 }
 
 func (a *Agent) PortFwdClose(SocketID int) {
+	a.PortFwdsMtx.Lock()
+	defer a.PortFwdsMtx.Unlock()
 
 	for i := range a.PortFwds {
 
@@ -1041,6 +1036,7 @@ func (a *Agent) PortFwdClose(SocketID int) {
 
 				/* close our connection */
 				a.PortFwds[i].Conn.Close()
+				a.PortFwds[i].Conn = nil
 
 			}
 
@@ -1056,16 +1052,16 @@ func (a *Agent) PortFwdClose(SocketID int) {
 
 func (a *Agent) SocksClientAdd(SocketID int32, conn net.Conn, ATYP byte, IpDomain []byte, Port uint16) *SocksClient {
 
-	a.SocksCliMtx.Lock()
-
 	var client = new(SocksClient)
 
-	client.SocketID = SocketID
-	client.Conn = conn
+	client.SocketID  = SocketID
+	client.Conn      = conn
 	client.Connected = false
-	client.ATYP = ATYP
-	client.IpDomain = IpDomain
-	client.Port = Port
+	client.ATYP      = ATYP
+	client.IpDomain  = IpDomain
+	client.Port      = Port
+
+	a.SocksCliMtx.Lock()
 
 	a.SocksCli = append(a.SocksCli, client)
 
@@ -1075,39 +1071,41 @@ func (a *Agent) SocksClientAdd(SocketID int32, conn net.Conn, ATYP byte, IpDomai
 }
 
 func (a *Agent) SocksClientGet(SocketID int) *SocksClient {
+	var (
+		client *SocksClient = nil
+	)
+
+	a.SocksCliMtx.Lock()
 
 	for i := range a.SocksCli {
 
 		if a.SocksCli[i].SocketID == int32(SocketID) {
 
-			return a.SocksCli[i]
+			client = a.SocksCli[i]
 
+			break
 		}
 
 	}
 
-	return nil
+	a.SocksCliMtx.Unlock()
+
+	return client
 }
 
-func (a *Agent) SocksClientRead(SocketID int) ([]byte, error) {
+func (a *Agent) SocksClientRead(client *SocksClient) ([]byte, error) {
 	var (
-		found = false
 		data  = make([]byte, 0x10000)
 		read  []byte
 	)
 
-	for i := range a.SocksCli {
-
-		/* check if it's our rportfwd connection */
-		if a.SocksCli[i].SocketID == int32(SocketID) {
-
-			/* alright we found our socket */
-			found = true
-
-			if a.SocksCli[i].Conn != nil {
+	if client != nil {
+		if client.Conn != nil {
+			if client.Connected {
 
 				/* read from our socket to the data buffer or return error */
-				length, err := a.SocksCli[i].Conn.Read(data)
+				client.Conn.SetReadDeadline(time.Time{})
+				length, err := client.Conn.Read(data)
 				if err != nil {
 					return nil, err
 				}
@@ -1115,26 +1113,22 @@ func (a *Agent) SocksClientRead(SocketID int) ([]byte, error) {
 				read = make([]byte, length)
 				copy(read, data)
 
-				break
+				/* return the read data */
+				return read, nil
 
 			} else {
-				return nil, errors.New("socks proxy connection is empty")
+				return nil, errors.New("socks proxy is not connected")
 			}
-
-			break;
+		} else {
+			return nil, errors.New("socks proxy connection is empty")
 		}
-
+	} else {
+		return nil, errors.New("socks proxy empty client")
 	}
-
-	if !found {
-		return nil, fmt.Errorf("socks proxy socket id %x not found", SocketID)
-	}
-
-	/* return the read data */
-	return read, nil
 }
 
-func (a *Agent) SocksClientClose(SocketID int32) {
+func (a *Agent) SocksClientClose(SocketID int32) bool {
+	found := false
 
 	a.SocksCliMtx.Lock()
 
@@ -1148,20 +1142,27 @@ func (a *Agent) SocksClientClose(SocketID int32) {
 
 				/* close our connection */
 				a.SocksCli[i].Conn.Close()
+				a.SocksCli[i].Conn = nil
 
 			}
 
 			/* remove the socks server from the array */
 			a.SocksCli = append(a.SocksCli[:i], a.SocksCli[i+1:]...)
 
+			found = true
+
 			break
 		}
 	}
 
 	a.SocksCliMtx.Unlock()
+
+	return found
 }
 
 func (a *Agent) SocksServerRemove(Addr string) {
+
+	a.SocksSvrMtx.Lock()
 
 	for i := range a.SocksSvr {
 
@@ -1172,6 +1173,7 @@ func (a *Agent) SocksServerRemove(Addr string) {
 
 				/* close our connection */
 				a.SocksSvr[i].Server.Close()
+				a.SocksSvr[i].Server = nil
 
 			}
 
@@ -1182,6 +1184,8 @@ func (a *Agent) SocksServerRemove(Addr string) {
 		}
 
 	}
+
+	a.SocksSvrMtx.Unlock()
 
 }
 
@@ -1205,7 +1209,7 @@ func (a *Agent) ToMap() map[string]interface{} {
 	delete(Info, "JobQueue")
 	delete(Info, "Parent")
 
-	MagicValue = fmt.Sprintf("%x", a.Info.MagicValue)
+	MagicValue = fmt.Sprintf("%08x", a.Info.MagicValue)
 
 	if ParentAgent != nil {
 		Info["PivotParent"] = ParentAgent.NameID

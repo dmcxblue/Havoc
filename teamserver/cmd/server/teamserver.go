@@ -25,6 +25,7 @@ import (
 	"golang.org/x/crypto/sha3"
 
 	"Havoc/pkg/colors"
+	"Havoc/pkg/common"
 	"Havoc/pkg/events"
 	"Havoc/pkg/handlers"
 	"Havoc/pkg/logger"
@@ -92,14 +93,15 @@ func (t *Teamserver) Start() {
 			return
 		}
 
-		t.Clients[ClientID] = &Client{
-			Username:      "",
-			GlobalIP:      WebSocket.RemoteAddr().String(),
-			Connection:    WebSocket,
-			ClientVersion: "",
-			Packager:      packager.NewPackager(),
-			Authenticated: false,
-		}
+		t.Clients.Store(ClientID,
+			&Client{
+				Username:      "",
+				GlobalIP:      WebSocket.RemoteAddr().String(),
+				Connection:    WebSocket,
+				ClientVersion: "",
+				Packager:      packager.NewPackager(),
+				Authenticated: false,
+			})
 
 		// Handle connections in a new goroutine.
 		go t.handleRequest(ClientID)
@@ -120,6 +122,7 @@ func (t *Teamserver) Start() {
 		}
 	})
 
+	// start the teamserver websocket connection
 	go func(Host, Port string) {
 		var (
 			certPath = TeamserverPath + "/data/server.cert"
@@ -153,11 +156,11 @@ func (t *Teamserver) Start() {
 		}
 
 		ServerFinished <- true
+
 		os.Exit(0)
 	}(t.Flags.Server.Host, t.Flags.Server.Port)
 
 	t.WebHooks = webhook.NewWebHook()
-	t.Clients = make(map[string]*Client)
 	t.Listeners = []*Listener{}
 
 	TeamserverWs = "wss://" + t.Flags.Server.Host + ":" + t.Flags.Server.Port
@@ -166,9 +169,7 @@ func (t *Teamserver) Start() {
 
 	/* if we specified a webhook then lets use it. */
 	if t.Profile.Config.WebHook != nil {
-
 		if t.Profile.Config.WebHook.Discord != nil {
-
 			var (
 				AvatarUrl string
 				UserName  string
@@ -185,13 +186,13 @@ func (t *Teamserver) Start() {
 			if len(t.Profile.Config.WebHook.Discord.WebHook) > 0 {
 				t.WebHooks.SetDiscord(AvatarUrl, UserName, t.Profile.Config.WebHook.Discord.WebHook)
 			}
-
 		}
-
 	}
 
 	// start teamserver service
 	if t.Profile.Config.Service != nil {
+
+		// 3rd Party Agent Support Enabled
 		t.Service = service.NewService(t.Server.Engine)
 		t.Service.Teamserver = t
 		t.Service.Data.ServerAgents = &t.Agents
@@ -232,7 +233,7 @@ func (t *Teamserver) Start() {
 					logger.Error("Failed to parse the kill date: " + err.Error())
 					return
 				}
-				KillDate = t.Unix()
+				KillDate = common.EpochTimeToSystemTime(t.Unix())
 			} else {
 				KillDate = 0
 			}
@@ -243,6 +244,7 @@ func (t *Teamserver) Start() {
 				WorkingHours: listener.WorkingHours,
 				Hosts:        listener.Hosts,
 				HostBind:     listener.HostBind,
+				Methode:      listener.Methode,
 				HostRotation: listener.HostRotation,
 				BehindRedir:  t.Profile.Config.Demon.TrustXForwardedFor,
 				PortBind:     strconv.Itoa(listener.PortBind),
@@ -291,10 +293,11 @@ func (t *Teamserver) Start() {
 					logger.Error("Failed to parse the kill date: " + err.Error())
 					return
 				}
-				KillDate = t.Unix()
+				KillDate = common.EpochTimeToSystemTime(t.Unix())
 			} else {
 				KillDate = 0
 			}
+
 			var HandlerData = handlers.SMBConfig{
 				Name:         listener.Name,
 				PipeName:     listener.PipeName,
@@ -324,26 +327,17 @@ func (t *Teamserver) Start() {
 	}
 
 	if ListenerCount > 0 {
-
 		var TotalCount = 0
-
 		if DbName := t.DB.ListenerNames(); len(DbName) > 0 {
-
 			TotalCount = ListenerCount
-
 			for _, name := range DbName {
-
 				for _, listener := range t.Listeners {
-
 					if listener.Name == name {
 						TotalCount--
 						break
 					}
-
 				}
-
 			}
-
 		}
 
 		if TotalCount > 0 {
@@ -378,6 +372,7 @@ func (t *Teamserver) Start() {
 			HandlerData.UserAgent = Data["UserAgent"].(string)
 			HandlerData.Headers = strings.Split(Data["Headers"].(string), ", ")
 			HandlerData.Uris = strings.Split(Data["Uris"].(string), ", ")
+			HandlerData.BehindRedir = t.Profile.Config.Demon.TrustXForwardedFor
 
 			HandlerData.Secure = false
 			if Data["Secure"].(string) == "true" {
@@ -500,22 +495,30 @@ func (t *Teamserver) Start() {
 }
 
 func (t *Teamserver) handleRequest(id string) {
-	_, NewClient, err := t.Clients[id].Connection.ReadMessage()
+	value, isok := t.Clients.Load(id)
+
+	if !isok {
+		return
+	}
+
+	client := value.(*Client)
+	_, NewClient, err := client.Connection.ReadMessage()
 
 	if err != nil {
 		if err != io.EOF {
 			logger.Error("Error reading 2:", err.Error())
 			if strings.Contains(err.Error(), "connection reset by peer") {
-				err := t.Clients[id].Connection.Close()
+				err := client.Connection.Close()
 				if err != nil {
 					logger.Error("Error while closing Client connection: " + err.Error())
 				}
 			}
 		}
+		t.Clients.Delete(id)
 		return
 	}
 
-	pk := t.Clients[id].Packager.CreatePackage(string(NewClient))
+	pk := client.Packager.CreatePackage(string(NewClient))
 
 	if t.Profile != nil {
 		var found = false
@@ -528,45 +531,45 @@ func (t *Teamserver) handleRequest(id string) {
 			err := t.SendEvent(id, events.UserDoNotExists())
 			if err != nil {
 				logger.Error("Error while sending package to " + colors.Red(id) + "")
-				return
 			}
 			t.RemoveClient(id)
+			return
 		}
 	}
 
-	for i := range t.Clients {
-		if t.Clients[i].Username == pk.Head.User {
+	isExist := false
+	t.Clients.Range(func(key, value any) bool {
+		if client.Username == pk.Head.User {
 			err := t.SendEvent(id, events.UserAlreadyExits())
 			if err != nil {
 				logger.Error("couldn't send event to client "+colors.Yellow(id)+":", err)
 			}
 			t.RemoveClient(id)
+			isExist = true
+			return false
 		}
+		return true
+	})
+	if isExist {
+		return
 	}
-
 	if !t.ClientAuthenticate(pk) {
-		if t.Clients[id] == nil {
-			return
-		}
-		logger.Error("Client [User: " + pk.Body.Info["User"].(string) + "] failed to Authenticate! (" + colors.Red(t.Clients[id].GlobalIP) + ")")
+		logger.Error("Client [User: " + pk.Body.Info["User"].(string) + "] failed to Authenticate! (" + colors.Red(client.GlobalIP) + ")")
 		err := t.SendEvent(id, events.Authenticated(false))
 		if err != nil {
 			logger.Error("client (" + colors.Red(id) + ") error while sending authenticate message: " + colors.Red(err))
 		}
-		err = t.Clients[id].Connection.Close()
+		err = client.Connection.Close()
 		if err != nil {
 			logger.Error("Failed to close client (" + id + ") socket")
 		}
 		return
 	} else {
-		if t.Clients[id] == nil {
-			return
-		}
 
 		logger.Good("User <" + colors.Blue(pk.Body.Info["User"].(string)) + "> " + colors.Green("Authenticated"))
 
-		t.Clients[id].Authenticated = true
-		t.Clients[id].ClientID = id
+		client.Authenticated = true
+		client.ClientID = id
 
 		err := t.SendEvent(id, events.Authenticated(true))
 		if err != nil {
@@ -574,21 +577,26 @@ func (t *Teamserver) handleRequest(id string) {
 		}
 	}
 
-	t.Clients[id].Username = pk.Body.Info["User"].(string)
-	packageNewUser := events.ChatLog.NewUserConnected(t.Clients[id].Username)
+	client.Username = pk.Body.Info["User"].(string)
+	packageNewUser := events.ChatLog.NewUserConnected(client.Username)
 	t.EventAppend(packageNewUser)
 	t.EventBroadcast(id, packageNewUser)
 
 	t.SendAllPackagesToNewClient(id)
 
 	for {
-		_, EventPackage, err := t.Clients[id].Connection.ReadMessage()
+		value, isok := t.Clients.Load(id)
+		if !isok {
+			return
+		}
+		client = value.(*Client)
+		_, EventPackage, err := client.Connection.ReadMessage()
 
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
-				logger.Warn("User <" + colors.Blue(t.Clients[id].Username) + "> " + colors.Red("Disconnected"))
+				logger.Warn("User <" + colors.Blue(client.Username) + "> " + colors.Red("Disconnected"))
 
-				t.EventAppend(events.ChatLog.UserDisconnected(t.Clients[id].Username))
+				t.EventAppend(events.ChatLog.UserDisconnected(client.Username))
 				t.RemoveClient(id)
 
 				return
@@ -596,18 +604,18 @@ func (t *Teamserver) handleRequest(id string) {
 				logger.Error("Error reading :", err.Error())
 			}
 
-			err := t.Clients[id].Connection.Close()
+			err := client.Connection.Close()
 			if err != nil {
 				logger.Error("Socket Error:", err.Error())
 			}
 
-			t.EventAppend(events.ChatLog.UserDisconnected(t.Clients[id].Username))
+			t.EventAppend(events.ChatLog.UserDisconnected(client.Username))
 			t.RemoveClient(id)
 
 			return
 		}
 
-		pk := t.Clients[id].Packager.CreatePackage(string(EventPackage))
+		pk := client.Packager.CreatePackage(string(EventPackage))
 		pk.Head.Time = time.Now().Format("02/01/2006 15:04:05")
 
 		t.EventAppend(pk)
@@ -634,31 +642,37 @@ func (t *Teamserver) ClientAuthenticate(pk packager.Package) bool {
 					var (
 						UserPassword string
 						UserName     string
+						PassHash     = sha3.New256()
+						UserFound    = false
 					)
+
+					// search for operator
 					for _, User := range t.Profile.Config.Operators.Users {
 						if User.Name == pk.Head.User {
-							logger.Debug("Found User: " + User.Name)
 							UserName = User.Name
-							if User.Hashed {
-								UserPassword = User.Password
-								break
-							} else {
-								var hash = sha3.New256()
-								hash.Write([]byte(User.Password))
-								UserPassword = hex.EncodeToString(hash.Sum(nil))
-								break
-							}
+							UserFound = true
+
+							PassHash.Write([]byte(User.Password))
+							UserPassword = hex.EncodeToString(PassHash.Sum(nil))
+
+							logger.Debug("Found User: " + User.Name)
 						}
 					}
-					if pk.Body.Info["Password"].(string) == UserPassword {
-						logger.Debug("User " + colors.Red(UserName) + " is authenticated")
-						return true
+
+					// check if the operator was even found
+					if UserFound {
+						if pk.Body.Info["Password"].(string) == UserPassword {
+							logger.Debug("User " + colors.Red(UserName) + " is authenticated")
+							return true
+						}
+					} else {
+						logger.Debug("User not found")
 					}
-					logger.Debug("User is not authenticated...")
-					return false
-				} else {
-					return false
+
+					logger.Debug("User not authenticated")
 				}
+
+				return false
 			} else {
 				return false
 			}
@@ -680,14 +694,16 @@ func (t *Teamserver) EventBroadcast(ExceptClient string, pk packager.Package) {
 		return
 	}
 
-	for ClientID := range t.Clients {
+	t.Clients.Range(func(key, value any) bool {
+		ClientID := key.(string)
 		if ExceptClient != ClientID {
 			err := t.SendEvent(ClientID, pk)
 			if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 				logger.Error("SendEvent error: ", colors.Red(err))
 			}
 		}
-	}
+		return true
+	})
 }
 
 func (t *Teamserver) EventNewDemon(DemonAgent *agent.Agent) packager.Package {
@@ -733,17 +749,19 @@ func (t *Teamserver) SendEvent(id string, pk packager.Package) error {
 		return err
 	}
 
-	if t.Clients[id] != nil {
+	value, isOk := t.Clients.Load(id)
+	if isOk {
+		client := value.(*Client)
+		client.Mutex.Lock()
 
-		t.Clients[id].Mutex.Lock()
-
-		err = t.Clients[id].Connection.WriteMessage(websocket.BinaryMessage, buffer.Bytes())
+		err = client.Connection.WriteMessage(websocket.BinaryMessage, buffer.Bytes())
 		if err != nil {
-			t.Clients[id].Mutex.Unlock()
+			// TODO: comment this line out as it seems to crash the server
+			//t.Clients[id].Mutex.Unlock()
 			return err
 		}
 
-		t.Clients[id].Mutex.Unlock()
+		client.Mutex.Unlock()
 
 	} else {
 		return errors.New(fmt.Sprintf("client (%v) doesn't exist anymore", colors.Red(id)))
@@ -753,10 +771,14 @@ func (t *Teamserver) SendEvent(id string, pk packager.Package) error {
 }
 
 func (t *Teamserver) RemoveClient(ClientID string) {
-	if _, ok := t.Clients[ClientID]; ok {
+
+	value, isOk := t.Clients.Load(ClientID)
+
+	if isOk {
+		client := value.(*Client)
 		var (
-			userDisconnected = t.Clients[ClientID].Username
-			Authenticated    = t.Clients[ClientID].Authenticated
+			userDisconnected = client.Username
+			Authenticated    = client.Authenticated
 		)
 
 		if Authenticated {
@@ -768,7 +790,7 @@ func (t *Teamserver) RemoveClient(ClientID string) {
 			}
 		}
 
-		delete(t.Clients, ClientID)
+		t.Clients.Delete(ClientID)
 	}
 }
 
@@ -782,8 +804,6 @@ func (t *Teamserver) EventAppend(event packager.Package) []packager.Package {
 	if event.Head.OneTime != "true" {
 		t.EventsList = append(t.EventsList, event)
 		return append(t.EventsList, event)
-	} else {
-		logger.Debug("Onetime package. not gonna save: ", event)
 	}
 
 	return nil
@@ -798,6 +818,20 @@ func (t *Teamserver) EventRemove(EventID int) []packager.Package {
 func (t *Teamserver) SendAllPackagesToNewClient(ClientID string) {
 	for _, Package := range t.EventsList {
 		err := t.SendEvent(ClientID, Package)
+		if err != nil {
+			logger.Error("error while sending info to client("+ClientID+"): ", err)
+			return
+		}
+	}
+
+	// send all the agents that are alive right now to the new client
+	for _, demon := range t.Agents.Agents {
+		if demon.Active == false {
+			continue
+		}
+
+		pk := t.EventNewDemon(demon)
+		err := t.SendEvent(ClientID, pk)
 		if err != nil {
 			logger.Error("error while sending info to client("+ClientID+"): ", err)
 			return
