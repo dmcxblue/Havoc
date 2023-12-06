@@ -39,9 +39,10 @@ type ServiceAgentInterface interface {
 // interface that allows us to interact with the core teamserver
 type TeamServer interface {
 	AgentUpdate(agent *Agent)
+	Died(Agent *Agent)
 	ParentOf(Agent *Agent) (int, error)
 	LinksOf(Agent *Agent) []int
-	LinkRemove(ParentAgent *Agent, LinkAgent *Agent) error
+	LinkRemove(ParentAgent *Agent, LinkAgent *Agent, UpdateLinks bool)
 	LinkAdd(ParentAgent *Agent, LinkAgent *Agent) error
 	AgentHasDied(Agent *Agent) bool
 	AgentAdd(agent *Agent) []*Agent
@@ -49,7 +50,7 @@ type TeamServer interface {
 	AgentSendNotify(agent *Agent)
 	AgentCallbackSize(DemonInstance *Agent, i int)
 	AgentInstance(AgentID int) *Agent
-	AgentLastTimeCalled(AgentID string, Time string, LastCallback string, Sleep int, Jitter int, KillDate int64, WorkingHours int32)
+	AgentLastTimeCalled(AgentID string, LastCallback string, Sleep int, Jitter int, KillDate int64, WorkingHours int32)
 	AgentExist(AgentID int) bool
 	AgentConsole(DemonID string, CommandID int, Output map[string]string)
 
@@ -63,11 +64,15 @@ type TeamServer interface {
 
 	ServiceAgent(MagicValue int) ServiceAgentInterface
 	ServiceAgentExist(MagicValue int) bool
+
+	GetDotNetPipeTemplate() string
+
+	SendLogs() bool
 }
 
 type Job struct {
-	RequestID uint32
 	Command   uint32
+	RequestID uint32
 	Data      []interface{}
 	Payload   []byte
 
@@ -91,14 +96,15 @@ type Download struct {
 	FileID    int
 	FilePath  string
 	LocalFile string
-	TotalSize int
-	Progress  int
+	TotalSize int64
+	Progress  int64
 	State     int
 }
 
 type BofCallback struct {
 	TaskID   uint32
 	Output   string
+	Error    string
 	ClientID string
 }
 
@@ -148,9 +154,11 @@ type Agent struct {
 	 * 		 to avoid having some unnecessary data for 3rd party agent */
 	Downloads   []*Download
 	PortFwds    []*PortFwd
+	PortFwdsMtx sync.Mutex
 	SocksCli    []*SocksClient
 	SocksCliMtx sync.Mutex
 	SocksSvr    []*SocksServer
+	SocksSvrMtx sync.Mutex
 
 	Encryption struct {
 		AESKey []byte
@@ -191,8 +199,10 @@ type AgentInfo struct {
 	ProcessArch string
 	ProcessName string
 	ProcessPID  int
+	ProcessTID  int
 	ProcessPPID int
 	ProcessPath string
+	BaseAddress int64
 
 	// Call home from Demon
 	FirstCallIn string

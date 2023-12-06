@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image/png"
+	"time"
 	"io"
 	"math/rand"
 	"net"
@@ -114,7 +115,7 @@ func DecodeUTF16(b []byte) string {
 	return ret.String()
 }
 
-func EncodeUTF16(s string) string {
+func EncodeUTF16(s string) []byte {
 	var err error
 
 	// in C, strings terminate with a null-byte
@@ -125,10 +126,19 @@ func EncodeUTF16(s string) string {
 	encoded, err := uni.NewEncoder().String(s)
 	if err != nil {
 		logger.Error("Failed to convert UTF8 to UTF16")
-		return ""
+		return []byte("")
 	}
 
-	return encoded
+	return []byte(encoded)
+}
+
+func EncodeUTF8(s string) []byte {
+	// in C, strings terminate with a null-byte
+	if strings.HasSuffix(s, "\x00") == false {
+		s += "\x00"
+	}
+
+	return []byte(s)
 }
 
 func ByteCountSI(b int64) string {
@@ -172,13 +182,13 @@ func StripNull(s string) string {
 	return string(bytes.Trim([]byte(s), "\x00"))
 }
 
-func PercentageChange(part int, total int) float64 {
+func PercentageChange(part int, total int64) float64 {
 	return (float64(part) * float64(100)) / float64(total)
 }
 
 func IpStringToInt32(ip string) (int, error) {
 	var long uint32
-	err := binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()), binary.BigEndian, &long)
+	err := binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()), binary.LittleEndian, &long)
 	if err != nil {
 		return 0, err
 	}
@@ -193,5 +203,99 @@ func Int32ToIpString(ipInt int64) string {
 	b2 := strconv.FormatInt((ipInt>>8)&0xff, 10)
 	b3 := strconv.FormatInt(ipInt&0xff, 10)
 
-	return b0 + "." + b1 + "." + b2 + "." + b3
+	return b3 + "." + b2 + "." + b1 + "." + b0
+}
+
+func EpochTimeToSystemTime( EpochTime int64 ) int64 {
+	var (
+		UNIX_TIME_START  int64 = 0x019DB1DED53E8000 //January 1, 1970 (start of Unix epoch) in "ticks"
+		TICKS_PER_SECOND int64 = 10000000 //a tick is 100ns
+	)
+
+	if (EpochTime == 0) {
+		return 0
+	}
+
+	return ( EpochTime * TICKS_PER_SECOND ) + UNIX_TIME_START
+}
+
+func GetRandomChar(dict string) string {
+    return string(dict[rand.Intn(len(dict))])
+}
+
+// generate a PipeName from a name template
+func GeneratePipeName(Template string, PID int, TID int) string {
+	var PipeName = Template
+
+	hexdigits := "0123456789abcdef"
+	digits := "0123456789"
+	ascii_uppercase := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	ascii_lowercase := "abcdefghijklmnopqrstuvwxyz"
+
+	rand.Seed(time.Now().UnixNano())
+
+	// add the process PID (if specified)
+	if PID != 0 {
+		PipeName = strings.Replace(PipeName, "{pid}", fmt.Sprintf("%d", PID), -1)
+		PipeName = strings.Replace(PipeName, "{Pid}", fmt.Sprintf("%d", PID), -1)
+		PipeName = strings.Replace(PipeName, "{PID}", fmt.Sprintf("%d", PID), -1)
+	}
+
+	// add the process TID (if specified)
+	if TID != 0 {
+		PipeName = strings.Replace(PipeName, "{tid}", fmt.Sprintf("%d", TID), -1)
+		PipeName = strings.Replace(PipeName, "{Tid}", fmt.Sprintf("%d", TID), -1)
+		PipeName = strings.Replace(PipeName, "{TID}", fmt.Sprintf("%d", TID), -1)
+	}
+
+	// #: hex char
+	for strings.Contains(PipeName, "$") {
+		PipeName = strings.Replace(PipeName, "$", GetRandomChar(hexdigits), 1)
+	}
+
+	// #: number
+	for strings.Contains(PipeName, "#") {
+		PipeName = strings.Replace(PipeName, "#", GetRandomChar(digits), 1)
+	}
+
+	// !: uppercase char
+	for strings.Contains(PipeName, "@") {
+		PipeName = strings.Replace(PipeName, "@", GetRandomChar(ascii_uppercase), 1)
+	}
+
+	// !: lowercase char
+	for strings.Contains(PipeName, "!") {
+		PipeName = strings.Replace(PipeName, "!", GetRandomChar(ascii_lowercase), 1)
+	}
+
+	// make sure the pipename starts with \\.\pipe\
+	if strings.HasPrefix(PipeName, "\\\\.\\pipe\\") == false {
+		PipeName = "\\\\.\\pipe\\" + PipeName
+	}
+
+	return PipeName
+}
+
+func GetInterfaceIpv4Addr(interfaceOrIp string) string {
+	var (
+		ief      *net.Interface
+		addrs    []net.Addr
+		ipv4Addr net.IP
+		err      error
+	)
+	if ief, err = net.InterfaceByName(interfaceOrIp); err != nil { // get interface
+		return interfaceOrIp
+	}
+	if addrs, err = ief.Addrs(); err != nil { // get addresses
+		return interfaceOrIp
+	}
+	for _, addr := range addrs { // get ipv4 address
+		if ipv4Addr = addr.(*net.IPNet).IP.To4(); ipv4Addr != nil {
+			break
+		}
+	}
+	if ipv4Addr == nil {
+		return interfaceOrIp
+	}
+	return ipv4Addr.String()
 }
