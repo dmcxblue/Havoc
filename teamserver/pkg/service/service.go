@@ -311,14 +311,14 @@ func (s *Service) dispatch(response map[string]map[string]any, client *ClientSer
 				AgentID = val.(string)
 			}
 
-			MagicValue64, err := strconv.ParseInt(MagicValue, 16, 32)
+			MagicValue64, err := strconv.ParseUint(MagicValue, 16, 32)  // Unsigned for full 32-bit range
 			if err != nil {
 				logger.Error("MagicValue64: " + err.Error())
 			}
 
-			AgentID64, err := strconv.ParseInt(AgentID, 16, 32)
+			AgentID64, err := strconv.ParseUint(AgentID, 16, 32)  // Unsigned for full 32-bit range
 			if err != nil {
-				logger.Error("MagicValue64: " + err.Error())
+				logger.Error("AgentID64: " + err.Error())
 			}
 
 			Header.AgentID = int(AgentID64)

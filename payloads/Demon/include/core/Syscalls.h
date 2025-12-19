@@ -55,7 +55,7 @@ VOID SysSetConfig(
 );
 
 NTSTATUS SysInvoke(
-    _Inout_ /* Args... */
+    ...  // Variadic args passed to syscall stub
 );
 
 BOOL IsWoW64();

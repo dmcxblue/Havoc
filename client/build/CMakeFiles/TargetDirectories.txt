@@ -1,0 +1,5 @@
+/home/dmcxblue/Documents/OffensiveTools/Havoc/client/build/CMakeFiles/Havoc.dir
+/home/dmcxblue/Documents/OffensiveTools/Havoc/client/build/CMakeFiles/edit_cache.dir
+/home/dmcxblue/Documents/OffensiveTools/Havoc/client/build/CMakeFiles/rebuild_cache.dir
+/home/dmcxblue/Documents/OffensiveTools/Havoc/client/build/CMakeFiles/Havoc_autogen_timestamp_deps.dir
+/home/dmcxblue/Documents/OffensiveTools/Havoc/client/build/CMakeFiles/Havoc_autogen.dir

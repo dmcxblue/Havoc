@@ -42,7 +42,7 @@ auto operator * ( string a, unsigned int b ) -> string
     return output;
 }
 
-static auto JoinAtIndex( QStringList list, int index ) -> QString
+static auto JoinAtIndex(QStringList list, int index) -> QString
 {
     QString string;
 
@@ -53,6 +53,26 @@ static auto JoinAtIndex( QStringList list, int index ) -> QString
             string.append( list[ index + i ] );
         else
             string.append( " " + list[ index + i ] );
+    }
+
+    return string;
+}
+
+static auto JoinAtIndexPreserveQuotes(QStringList list, int index) -> QString
+{
+    QString string;
+
+    int size = list.size();
+    for (int i = 0; i < (size - index); ++i)
+    {
+        if (i == 0) string.append(list[index + i]);
+        else
+        {
+            if (list[index + i].contains(" "))
+                string.append(" \"" + list[index + i] + "\"");
+            else
+                string.append(" " + list[index + i]);
+        }
     }
 
     return string;
@@ -1959,9 +1979,23 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
 
                         TaskID = CONSOLE_INFO( "Tasked demon to configure injection technique: " + InputCommands[ 2 ] );
                     } */
-                else if ( InputCommands[ 1 ].compare( "inject.spoofaddr" ) == 0 ) // TODO: finish this
+                else if ( InputCommands[ 1 ].compare( "inject.spoofaddr" ) == 0 )
                 {
-                    CONSOLE_ERROR( "Not implemented" ); return false;
+                    if ( InputCommands.size() < 3 ) {
+                        CONSOLE_ERROR( "Not enough arguments" );
+                        return false;
+                    }
+
+                    auto Value = InputCommands[ 2 ];
+
+                    // format: lib!function+0xoffset (e.g., ntdll!LdrLoadLibrary+0x46)
+                    if ( ! Value.contains( "!" ) || ! Value.contains( "+0x" ) )
+                    {
+                        CONSOLE_ERROR( "Invalid format. Expected: lib!function+0xoffset (e.g., ntdll.dll!LdrLoadLibrary+0x46)" );
+                        return false;
+                    }
+
+                    TaskID = CONSOLE_INFO( "Tasked demon to configure injection thread start address spoof: " + Value );
                 }
                 else if ( InputCommands[ 1 ].compare( "inject.spawn64" ) == 0 )
                 {
@@ -2145,7 +2179,7 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
                 }
                 else if ( InputCommands[ 1 ].compare( "connect" ) == 0 )
                 {
-                    // TODO: For now only Smb
+                    // SMB pivot only - TCP pivot requires agent-side implementation
                     Command = "10";
 
                     if ( InputCommands.size() >= 4 )
@@ -2158,7 +2192,7 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
                     }
                     else
                     {
-                        CONSOLE_ERROR( "Not enough arguments" )
+                        CONSOLE_ERROR( "Not enough arguments. Usage: pivot connect <host> <pipename>" )
                         return false;
                     }
                 }
@@ -2693,10 +2727,12 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
         else
         {
             auto CommandInput = QMap<string, string>();
-            auto ParamArray   = commandline.split( " " );
+            auto ParamArray   = ParseQuotes(commandline);
+
+            auto ParamSize    = ParamArray.size();
             auto CommandFound = false;
 
-            ParamArray.erase( ParamArray.begin() );
+            ParamArray.erase(ParamArray.begin());
 
             if ( ! Send )
             {
@@ -2708,36 +2744,47 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
                 }
             }
 
-            for ( auto & command : AgentData.Commands )
+            for (auto & command : AgentData.Commands)
             {
-                if ( InputCommands[ 0 ].compare( command.Name ) == 0 )
+                if (InputCommands[0].compare(command.Name) == 0)
                 {
                     TaskID       = Util::gen_random( 8 ).c_str();
                     CommandFound = true;
 
-                    CommandInput.insert( "TaskID",      TaskID.toStdString() );
-                    CommandInput.insert( "CommandLine", commandline.toStdString() );
-                    CommandInput.insert( "DemonID",     DemonConsole->SessionInfo.Name.toStdString() );
-                    CommandInput.insert( "Command",     command.Name.toStdString() );
+                    CommandInput.insert("TaskID",      TaskID.toStdString());
+                    CommandInput.insert("CommandLine", commandline.toStdString());
+                    CommandInput.insert("DemonID",     DemonConsole->SessionInfo.Name.toStdString());
+                    CommandInput.insert("Command",     command.Name.toStdString());
 
                     ParamArray.push_back("");
-                    for ( u32 i = 0; i < command.Params.size(); i++ )
+                    for (u32 i = 0; i < command.Params.size(); ++i)
                     {
                         auto Value = QString();
 
-                        if ( command.Params[ i ].IsFilePath )
+                        if (command.Params[i].IsFilePath)
                         {
-                            Value = FileRead( ParamArray[ i ] ).toBase64();
-                        }
-                        else
-                        {
-                            if ( ParamArray.size() > 1 && command.Params.size() == 1 )
-                                Value = ParamArray.join( " " );
+                            auto f = FileRead(ParamArray[i]);
+                            if (f != nullptr) Value = f.toBase64();
                             else
-                                Value = ParamArray[ i ];
+                            {
+                                CONSOLE_ERROR("File not found: " + ParamArray[i]);
+                                return false;
+                            }
                         }
+                        else if (ParamSize > 1 && command.Params.size() < ParamSize && (command.Params.size() - i) == 1) 
+                            Value = JoinAtIndexPreserveQuotes(ParamArray, i);
+                        else if (!command.Params[i].IsOptional)
+                        {
+                            if (i < ParamSize - 1) Value = ParamArray[i];
+                            else
+                            {
+                                CONSOLE_ERROR("Required parameter not given: " + command.Params[i].Name);
+                                return false;
+                            }
+                        }
+                        else if (i < ParamSize - 1) Value = ParamArray[i];
 
-                        CommandInput.insert( command.Params[ i ].Name.toStdString(), Value.toStdString() );
+                        CommandInput.insert(command.Params[i].Name.toStdString(), Value.toStdString());
                     }
                 }
             }

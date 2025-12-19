@@ -6,6 +6,8 @@
 #include <global.hpp>
 
 #include <QScrollBar>
+#include <QProcess>
+#include <QDir>
 
 void Store::setupUi( QWidget* Store)
 {
@@ -15,7 +17,7 @@ void Store::setupUi( QWidget* Store)
     QNetworkReply *reply = manager->get(QNetworkRequest(url));
 
     if ( Store->objectName().isEmpty() )
-        Store->setObjectName( QString::fromUtf8( "Extentions" ) );
+        Store->setObjectName( QString::fromUtf8( "Extensions" ) );
 
     horizontalLayout = new QHBoxLayout( Store );
     horizontalLayout->setObjectName( QString::fromUtf8( "horizontalLayout" ) );
@@ -38,13 +40,13 @@ void Store::setupUi( QWidget* Store)
     root_panelLayout = new QVBoxLayout(panelStore);
     root_panelLayout->addWidget(panelScroll);
 
-    headerLabelTitle = new QLabel( "<h1>Havoc Extentions!</h1>", panelStore );
+    headerLabelTitle = new QLabel( "<h1>Havoc Extensions!</h1>", panelStore );
     headerLabelTitle->setWordWrap(true);
     panelLayout->addWidget(headerLabelTitle);
     panelLabelAuthor = new QLabel( "<span style='color:#71e0cb'>The author</span>", panelStore );
     panelLabelAuthor->setWordWrap(true);
     panelLayout->addWidget(panelLabelAuthor);
-    panelLabelDescription = new QLabel( "This tab is to install extentions inside of havoc!", panelStore );
+    panelLabelDescription = new QLabel( "This tab is to install extensions inside of havoc!", panelStore );
     panelLabelDescription->setWordWrap(true);
     panelLayout->addWidget(panelLabelDescription);
     installButton = new QPushButton("Install");
@@ -196,24 +198,27 @@ void Store::installScript(int position)
 
         QString downloadURL = gistUrl.arg(author, github_hash, entrypoint);
         QString pathScript = QString("%1/data/extensions/%2").arg(currentPath).arg(entrypoint);
-        QString command = QString("wget %1 -O %2").arg(downloadURL).arg(pathScript);
 
-        // Yes there is a command injection vulnerability here. Now this is not the best
-        // but since the front-end will be fully redone I am not putting to much effort
-        // here it's just to code the base concept nothing else :)
-        system(command.toUtf8().constData());
+        // Use QProcess instead of system() to avoid command injection
+        QProcess wgetProcess;
+        wgetProcess.start("wget", QStringList() << downloadURL << "-O" << pathScript);
+        wgetProcess.waitForFinished();
 
         if ( AddScript( pathScript ) ) {
             if ( ! HavocX::Teamserver.TabSession->dbManager->CheckScript(pathScript) )
                 HavocX::Teamserver.TabSession->dbManager->AddScript(pathScript);
         }
-    } else { // Must be a repo then and not a gist ^^ now we can be happy for that entrypoint var
+    } else { // Must be a repo then and not a gist
         QStringList urlParts = url.split('/');
         QString repo_name = urlParts.last();
         QString pathScript = QString("%1/data/extensions/%2/%3").arg(currentPath).arg(repo_name).arg(entrypoint);
-        QString command = QString("git clone --recurse-submodules --remote-submodules %1 %2/data/extensions/%3").arg(url).arg(currentPath).arg(repo_name);
+        QString extensionDir = QString("%1/data/extensions/%2").arg(currentPath).arg(repo_name);
 
-        system(command.toUtf8().constData());
+        // Use QProcess instead of system() to avoid command injection
+        QProcess gitProcess;
+        gitProcess.start("git", QStringList() << "clone" << "--recurse-submodules" << "--remote-submodules" << url << extensionDir);
+        gitProcess.waitForFinished();
+
         if ( AddScript( pathScript ) ) {
             if ( ! HavocX::Teamserver.TabSession->dbManager->CheckScript(pathScript) )
                 HavocX::Teamserver.TabSession->dbManager->AddScript(pathScript);
@@ -223,5 +228,5 @@ void Store::installScript(int position)
 
 void Store::retranslateUi()
 {
-    StoreWidget->setWindowTitle( QCoreApplication::translate( "Extentions", "Extentions", nullptr ) );
+    StoreWidget->setWindowTitle( QCoreApplication::translate( "Extensions", "Extensions", nullptr ) );
 }

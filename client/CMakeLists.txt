@@ -1,10 +1,15 @@
-cmake_minimum_required( VERSION 3.15 )
+cmake_minimum_required( VERSION 3.16 )
 project( Havoc )
+
+# Handle deprecated FindPythonLibs (removed in CMake 3.27+)
+if(POLICY CMP0148)
+    cmake_policy(SET CMP0148 OLD)
+endif()
 
 ##
 ## cmake sets
 ##
-set( QT_VERSION 5 )
+set( QT_VERSION 6 )
 set( CMAKE_CXX_STANDARD 20 )
 set( CMAKE_AUTOMOC ON )
 set( CMAKE_AUTORCC ON )
@@ -13,7 +18,7 @@ set( CMAKE_CPP_COMPILER /usr/bin/x86_64-w64-mingw32-g++ )
 set( CMAKE_C_COMPILER /usr/bin/x86_64-w64-mingw32-gcc )
 set( CMAKE_CXX_FLAGS "-fpermissive" )
 set( REQUIRED_LIBS Core Gui Widgets Network WebSockets Sql )
-set( REQUIRED_LIBS_QUALIFIED Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network Qt5::WebSockets Qt5::Sql )
+set( REQUIRED_LIBS_QUALIFIED Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets Qt6::Sql )
 set( APP_ICON_RESOURCE_WINDOWS "data/Havoc.qrc" )
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY .. )
 set( CMAKE_INCLUDE_CURRENT_DIR ON )

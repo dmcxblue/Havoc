@@ -6,7 +6,12 @@
 #include <QtNetwork/QTcpSocket>
 #include <QtCore/QVariant>
 #include <QtGui/QIcon>
-#include <QAction>
+// QAction moved from QtWidgets to QtGui in Qt 6
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QtGui/QAction>
+#else
+#include <QtWidgets/QAction>
+#endif
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QLabel>
@@ -26,7 +31,10 @@
 #include <QLineEdit>
 #include <QTextEdit>
 #include <QTableWidget>
+// QTextCodec removed in Qt 6
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 #include <QTextCodec>
+#endif
 
 #include <string>
 #include <map>
@@ -243,6 +251,7 @@ namespace HavocNamespace
             std::map<QString, PyObject*> TaskIDToPythonCallbacks;
 
             void Export();
+            void Remove();
         } SessionItem;
 
         typedef struct
