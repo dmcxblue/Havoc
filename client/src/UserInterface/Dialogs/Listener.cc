@@ -994,12 +994,7 @@ auto NewListener::Free() -> void
 {
     for ( auto listener : ServiceListeners )
     {
-        for ( auto item : listener.Items )
-        {
-            // delete ( QLabel* )    listener.Items[ item ][ "Label" ].get<uint64_t>();
-            // delete ( QLineEdit* ) listener.Items[ item ][ "Line"  ].get<uint64_t>();
-        }
-
+        // Widget items owned by Layout, deleted via Qt parent hierarchy
         delete listener.Layout;
         delete listener.Page;
     }

@@ -17,16 +17,22 @@ class ImageLabel : public QWidget
 public:
     QLabel*      label;
     QScrollArea* scrollArea;
-    bool         key_ctrl = false;
+    bool         key_ctrl   = false;
+    double       zoomFactor = 1.0;
+    QPixmap      originalPixmap;
 
     explicit ImageLabel(QWidget *parent = 0);
-    const QPixmap* pixmap() const;
+    QPixmap pixmap() const;  // Returns by value (Qt 5.15+ API)
 
 public slots:
     void setPixmap(const QPixmap&);
+    void zoomIn();
+    void zoomOut();
+    void zoomReset();
 
 protected:
     void resizeEvent(QResizeEvent *);
+    void keyPressEvent( QKeyEvent* event );
     void keyReleaseEvent( QKeyEvent* event );
     bool event(QEvent *) override;
     void wheelEvent(QWheelEvent *ev);
@@ -34,6 +40,8 @@ protected:
 public slots:
     void resizeImage();
 
+private:
+    void applyZoom();
 };
 
 class LootWidget : public QWidget
@@ -79,6 +87,9 @@ public:
     QMenu*          ScreenshotMenu;
     QAction*        ScreenshotActionDownload;
 
+    QMenu*          DownloadMenu;
+    QAction*        DownloadActionSave;
+
     QSpacerItem*    horizontalSpacer;
     QStackedWidget* StackWidget;
     QWidget*        Screenshots;
@@ -107,6 +118,9 @@ private Q_SLOTS:
     void onScreenshotTableClick( const QModelIndex &index );
     void onDownloadTableClick( const QModelIndex &index );
     void onScreenshotTableCtx( const QPoint &pos );
+    void onDownloadTableCtx( const QPoint &pos );
+    void onSaveScreenshot();
+    void onSaveDownload();
 };
 
 

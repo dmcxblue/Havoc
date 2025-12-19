@@ -57,19 +57,41 @@ void HavocSpace::Havoc::Init( int argc, char** argv )
         }
     }
 
-    Config = toml::parse( Path );
-    spdlog::info( "loaded config file: {}", Path );
+    try
+    {
+        Config = toml::parse( Path );
+        spdlog::info( "loaded config file: {}", Path );
 
-    /* TODO: handle any kind of error */
-    const auto& font   = toml::find( Config, "font" );
-    const auto  family = toml::find<std::string>( font, "family" );
-    const auto  size   = toml::find<int>( font, "size" );
+        const auto& font   = toml::find( Config, "font" );
+        const auto  family = toml::find<std::string>( font, "family" );
+        const auto  size   = toml::find<int>( font, "size" );
 
-    QTextCodec::setCodecForLocale( QTextCodec::codecForName( "UTF-8" ) );
-    QApplication::setFont( QFont( family.c_str(), size ) );
-        QTimer::singleShot( 10, [&]() {
+        // QTextCodec removed in Qt 6; UTF-8 is default in Qt 5.15+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        QTextCodec::setCodecForLocale( QTextCodec::codecForName( "UTF-8" ) );
+#endif
         QApplication::setFont( QFont( family.c_str(), size ) );
-    } );
+        QTimer::singleShot( 10, [&]() {
+            QApplication::setFont( QFont( family.c_str(), size ) );
+        } );
+    }
+    catch ( const toml::syntax_error& err )
+    {
+        spdlog::error( "Config syntax error: {}", err.what() );
+        Exit();
+    }
+    catch ( const std::out_of_range& err )
+    {
+        spdlog::error( "Config missing required key: {}", err.what() );
+        spdlog::warn( "Using default font settings" );
+        QApplication::setFont( QFont( "Monospace", 10 ) );
+    }
+    catch ( const std::exception& err )
+    {
+        spdlog::error( "Config error: {}", err.what() );
+        spdlog::warn( "Using default font settings" );
+        QApplication::setFont( QFont( "Monospace", 10 ) );
+    }
 
     this->HavocMainWindow->setVisible( false );
 

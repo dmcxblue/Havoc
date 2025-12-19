@@ -1,4 +1,5 @@
 #include <global.hpp>
+#include <QTimeZone>
 
 // Headers for UserInterface
 #include <Havoc/Havoc.hpp>
@@ -107,15 +108,7 @@ void HavocNamespace::UserInterface::HavocUi::setupUi(QMainWindow *Havoc)
     TeamserverTabWidget->setTabBarAutoHide( true );
     TeamserverTabWidget->setTabsClosable( true );
 
-    /* TODO: refactor this. */
-    HavocX::Teamserver.TabSession = new UserInterface::Widgets::TeamserverTabSession;
-    HavocX::Teamserver.TabSession->setupUi( new QWidget, HavocX::Teamserver.Name );
-    TeamserverTabWidget->setCurrentIndex(
-        TeamserverTabWidget->addTab(
-            HavocX::Teamserver.TabSession->PageWidget,
-            HavocX::Teamserver.Name
-        )
-    );
+    NewTeamserverTab( HavocX::Teamserver.Name );
 
     gridLayout_3->addWidget( TeamserverTabWidget, 0, 0, 1, 1 );
 
@@ -270,10 +263,11 @@ void HavocNamespace::UserInterface::HavocUi::UpdateSessionsHealth()
         auto Now  = QDateTime::currentDateTimeUtc();
         auto diff = session.LastUTC.secsTo( Now );
 
-        auto seconds = QDateTime::fromTime_t( diff ).toUTC().toString("s");
-        auto minutes = QDateTime::fromTime_t( diff ).toUTC().toString("m");
-        auto hours   = QDateTime::fromTime_t( diff ).toUTC().toString("h");
-        auto days    = QDateTime::fromTime_t( diff ).toUTC().toString("d");
+        // Compute time components from diff (in seconds)
+        auto seconds = QString::number( diff % 60 );
+        auto minutes = QString::number( ( diff / 60 ) % 60 );
+        auto hours   = QString::number( ( diff / 3600 ) % 24 );
+        auto days    = QString::number( diff / 86400 );
 
         if ( diff < 60 )
         {
@@ -305,7 +299,8 @@ void HavocNamespace::UserInterface::HavocUi::UpdateSessionsHealth()
             auto TICKS_PER_SECOND = 10000000; //a tick is 100ns
             auto KillDateInEpoch  = ( session.KillDate - UNIX_TIME_START ) / TICKS_PER_SECOND;
 
-            if ( Now.secsTo( QDateTime::fromSecsSinceEpoch( KillDateInEpoch, Qt::UTC ) ) <= 0 )
+            // Use QTimeZone for Qt 6 compatibility
+            if ( Now.secsTo( QDateTime::fromSecsSinceEpoch( KillDateInEpoch, QTimeZone::UTC ) ) <= 0 )
             {
                 // agent reached its killdate
                 session.Health = "killdate";

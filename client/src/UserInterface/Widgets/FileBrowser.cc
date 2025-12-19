@@ -4,6 +4,8 @@
 #include <UserInterface/Widgets/DemonInteracted.h>
 
 #include <QList>
+#include <QInputDialog>
+#include <QMessageBox>
 #include <spdlog/spdlog.h>
 #include <Util/Base.hpp>
 
@@ -79,11 +81,13 @@ void FileBrowser::setupUi( QWidget* FileBrowser )
 
     ButtonGoUpDir = new QPushButton( FileBrowserListWidget );
     ButtonGoUpDir->setObjectName( QString::fromUtf8( "ButtonGoUpDir" ) );
+    ButtonGoUpDir->setToolTip( "Navigate to parent directory" );
 
     formLayout->setWidget( 0, QFormLayout::LabelRole, ButtonGoUpDir );
 
     InputFileBrowserPath = new QLineEdit( FileBrowserListWidget );
     InputFileBrowserPath->setObjectName( QString::fromUtf8( "InputFileBrowserPath" ) );
+    InputFileBrowserPath->setToolTip( "Current path - press Enter to navigate" );
 
     formLayout->setWidget( 0, QFormLayout::FieldRole, InputFileBrowserPath );
 
@@ -120,18 +124,18 @@ void FileBrowser::setupUi( QWidget* FileBrowser )
 
     MenuFileBrowserTable = new QMenu( this );
     MenuFileBrowserTable->setStyleSheet( MenuStyle );
-    // MenuFileBrowserTable->addAction( "Remove", this, &FileBrowser::onTableMenuRemove );
     MenuFileBrowserTable->addAction( "Download", this, &FileBrowser::onTableMenuDownload );
-    MenuFileBrowserTable->addAction( "Reload", this, &FileBrowser::onTableMenuReload );
-    // MenuFileBrowserTable->addAction( "Mkdir",  this, &FileBrowser::onTableMenuMkdir );
+    MenuFileBrowserTable->addAction( "Mkdir",    this, &FileBrowser::onTableMenuMkdir );
+    MenuFileBrowserTable->addAction( "Remove",   this, &FileBrowser::onTableMenuRemove );
+    MenuFileBrowserTable->addAction( "Reload",   this, &FileBrowser::onTableMenuReload );
     TableFileBrowser->addAction( MenuFileBrowserTable->menuAction() );
 
     MenuFileBrowserTree  = new QMenu( this );
     MenuFileBrowserTree->setStyleSheet( MenuStyle );
-    // MenuFileBrowserTree->addAction( "List Drives", this, &FileBrowser::onTreeMenuListDrives );
-    // MenuFileBrowserTree->addAction( "Remove",      this, &FileBrowser::onTreeMenuRemove );
-    // MenuFileBrowserTree->addAction( "Reload",      this, &FileBrowser::onTreeMenuReload );
-    // MenuFileBrowserTree->addAction( "Mkdir",       this, &FileBrowser::onTreeMenuMkdir  );
+    MenuFileBrowserTree->addAction( "List Drives", this, &FileBrowser::onTreeMenuListDrives );
+    MenuFileBrowserTree->addAction( "Mkdir",       this, &FileBrowser::onTreeMenuMkdir );
+    MenuFileBrowserTree->addAction( "Remove",      this, &FileBrowser::onTreeMenuRemove );
+    MenuFileBrowserTree->addAction( "Reload",      this, &FileBrowser::onTreeMenuReload );
     FileBrowserTree->addAction( MenuFileBrowserTree->menuAction() );
 
     retranslateUi( );
@@ -312,9 +316,16 @@ void FileBrowser::ChangePathAndSendRequest( QString Path )
 
 void FileBrowser::TableClear()
 {
-    // TODO: free items
-    for ( int i = TableFileBrowser->rowCount() - 1; i >= 0; i-- )
-        TableFileBrowser->removeRow( i );
+    // Properly free items before clearing table
+    while ( TableFileBrowser->rowCount() > 0 )
+    {
+        for ( int col = 0; col < TableFileBrowser->columnCount(); col++ )
+        {
+            auto item = TableFileBrowser->takeItem( 0, col );
+            delete item;
+        }
+        TableFileBrowser->removeRow( 0 );
+    }
 }
 
 void FileBrowser::onButtonUp()
@@ -378,7 +389,29 @@ void FileBrowser::onTreeContextMenu( const QPoint &pos )
 
 void FileBrowser::onTableMenuMkdir()
 {
+    bool ok;
+    QString dirName = QInputDialog::getText( this->TableFileBrowser, "Create Directory",
+        "Directory name:", QLineEdit::Normal, "", &ok );
 
+    if ( !ok || dirName.isEmpty() )
+        return;
+
+    QString currentPath = InputFileBrowserPath->text();
+    QString fullPath = currentPath + "\\" + dirName;
+
+    for ( auto& Session : HavocX::Teamserver.Sessions )
+    {
+        if ( Session.Name.compare( SessionID ) == 0 )
+        {
+            Session.InteractedWidget->DemonCommands->Execute.FS(
+                Util::gen_random( 8 ).c_str(), "mkdir", fullPath );
+
+            // Refresh directory listing after creation
+            TableClear();
+            ChangePathAndSendRequest( currentPath );
+            return;
+        }
+    }
 }
 
 void FileBrowser::onTableMenuReload()
@@ -404,27 +437,90 @@ void FileBrowser::onTableMenuReload()
 
 void FileBrowser::onTableMenuRemove()
 {
+    auto Item = ( ( FileBrowserTableItem* ) TableFileBrowser->item( TableFileBrowser->currentRow(), 0 ) );
+    if ( !Item )
+        return;
 
+    QString fullPath = Item->Data.Path + "\\" + Item->Data.Name;
+
+    auto confirm = QMessageBox::question( this->TableFileBrowser, "Confirm Delete",
+        QString( "Delete '%1'?" ).arg( Item->Data.Name ),
+        QMessageBox::Yes | QMessageBox::No );
+
+    if ( confirm != QMessageBox::Yes )
+        return;
+
+    for ( auto& Session : HavocX::Teamserver.Sessions )
+    {
+        if ( Session.Name.compare( SessionID ) == 0 )
+        {
+            Session.InteractedWidget->DemonCommands->Execute.FS(
+                Util::gen_random( 8 ).c_str(), "remove", fullPath );
+
+            // Refresh directory listing
+            TableClear();
+            ChangePathAndSendRequest( Item->Data.Path );
+            return;
+        }
+    }
 }
 
 void FileBrowser::onTreeMenuListDrives()
 {
-
+    for ( auto& Session : HavocX::Teamserver.Sessions )
+    {
+        if ( Session.Name.compare( SessionID ) == 0 )
+        {
+            // List drives by querying root paths
+            Session.InteractedWidget->DemonCommands->Execute.FS(
+                Util::gen_random( 8 ).c_str(), "dir;ui", ".\\" );
+            return;
+        }
+    }
 }
 
 void FileBrowser::onTreeMenuMkdir()
 {
-
+    // Reuse table mkdir logic - same current path context
+    onTableMenuMkdir();
 }
 
 void FileBrowser::onTreeMenuReload()
 {
-
+    QString currentPath = InputFileBrowserPath->text();
+    TableClear();
+    ChangePathAndSendRequest( currentPath );
 }
 
 void FileBrowser::onTreeMenuRemove()
 {
+    auto treeItem = FileBrowserTree->currentItem();
+    if ( !treeItem )
+        return;
 
+    QString itemPath = treeItem->text( 0 );
+
+    auto confirm = QMessageBox::question( this->FileBrowserTree, "Confirm Delete",
+        QString( "Delete '%1'?" ).arg( itemPath ),
+        QMessageBox::Yes | QMessageBox::No );
+
+    if ( confirm != QMessageBox::Yes )
+        return;
+
+    for ( auto& Session : HavocX::Teamserver.Sessions )
+    {
+        if ( Session.Name.compare( SessionID ) == 0 )
+        {
+            Session.InteractedWidget->DemonCommands->Execute.FS(
+                Util::gen_random( 8 ).c_str(), "remove", itemPath );
+
+            // Refresh current view
+            QString currentPath = InputFileBrowserPath->text();
+            TableClear();
+            ChangePathAndSendRequest( currentPath );
+            return;
+        }
+    }
 }
 
 void FileBrowser::onInputPath()

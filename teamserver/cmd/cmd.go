@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	VersionNumber = "0.7"
-	VersionName   = "Bites The Dust"
+	VersionNumber = "0.7.1"
+	VersionName   = "Mind Awake"
 	DatabasePath  = "data/teamserver.db"
 
 	HavocCli = &cobra.Command{

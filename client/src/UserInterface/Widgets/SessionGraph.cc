@@ -178,16 +178,23 @@ void GraphWidget::GraphPivotNodeReconnect( QString ParentAgentID, QString ChildA
             auto i = qgraphicsitem_cast<Edge*>( g_item );
             if ( i->dest->NodeID.compare( ChildAgentID ) == 0 )
             {
-                GraphScene->addItem( new Edge( GraphNodeGet( ParentAgentID ), i->dest, QColor( HavocNamespace::Util::ColorText::Colors::Hex::Purple ) ) );
+                auto newParent = GraphNodeGet( ParentAgentID );
+                auto destNode  = i->dest;
+
+                // Update destination node state
+                destNode->Disconnected = false;
+
+                // Create new edge with the new parent
+                auto newEdge = new Edge( newParent, destNode, QColor( HavocNamespace::Util::ColorText::Colors::Hex::Purple ) );
+                GraphScene->addItem( newEdge );
+
+                // Remove old edge from scene and delete it
                 GraphScene->removeItem( i );
+                delete i;
 
-                // TODO: somehow remove/free i (Edge*)
-                // i->source = GraphNodeGet( ParentAgentID );
-                // i->dest->Disconnected = false;
-                // i->Color( QColor( HavocNamespace::Util::ColorText::Colors::Hex::Purple ) );
-
-                // i->dest->update();
-                // i->source->update();
+                // Update the nodes
+                destNode->update();
+                newParent->update();
 
                 return;
             }
@@ -232,10 +239,10 @@ void GraphWidget::timerEvent( QTimerEvent* event )
             nodes << node;
     }
 
-    for ( Node* node : qAsConst( nodes ) )
+    for ( Node* node : std::as_const( nodes ) )
         node->calculateForces();
 
-    for ( Node* node : qAsConst( nodes ) )
+    for ( Node* node : std::as_const( nodes ) )
     {
         if ( node->advancePosition() )
             itemsMoved = true;
@@ -1010,7 +1017,7 @@ QVariant Node::itemChange( GraphicsItemChange change, const QVariant& value )
     {
         case ItemPositionHasChanged:
         {
-            for ( Edge* edge : qAsConst( edgeList ) )
+            for ( Edge* edge : std::as_const( edgeList ) )
                 edge->adjust();
 
             graph->itemMoved();

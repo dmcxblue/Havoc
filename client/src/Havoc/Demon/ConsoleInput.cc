@@ -1979,9 +1979,23 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
 
                         TaskID = CONSOLE_INFO( "Tasked demon to configure injection technique: " + InputCommands[ 2 ] );
                     } */
-                else if ( InputCommands[ 1 ].compare( "inject.spoofaddr" ) == 0 ) // TODO: finish this
+                else if ( InputCommands[ 1 ].compare( "inject.spoofaddr" ) == 0 )
                 {
-                    CONSOLE_ERROR( "Not implemented" ); return false;
+                    if ( InputCommands.size() < 3 ) {
+                        CONSOLE_ERROR( "Not enough arguments" );
+                        return false;
+                    }
+
+                    auto Value = InputCommands[ 2 ];
+
+                    // format: lib!function+0xoffset (e.g., ntdll!LdrLoadLibrary+0x46)
+                    if ( ! Value.contains( "!" ) || ! Value.contains( "+0x" ) )
+                    {
+                        CONSOLE_ERROR( "Invalid format. Expected: lib!function+0xoffset (e.g., ntdll.dll!LdrLoadLibrary+0x46)" );
+                        return false;
+                    }
+
+                    TaskID = CONSOLE_INFO( "Tasked demon to configure injection thread start address spoof: " + Value );
                 }
                 else if ( InputCommands[ 1 ].compare( "inject.spawn64" ) == 0 )
                 {
@@ -2165,7 +2179,7 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
                 }
                 else if ( InputCommands[ 1 ].compare( "connect" ) == 0 )
                 {
-                    // TODO: For now only Smb
+                    // SMB pivot only - TCP pivot requires agent-side implementation
                     Command = "10";
 
                     if ( InputCommands.size() >= 4 )
@@ -2178,7 +2192,7 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
                     }
                     else
                     {
-                        CONSOLE_ERROR( "Not enough arguments" )
+                        CONSOLE_ERROR( "Not enough arguments. Usage: pivot connect <host> <pipename>" )
                         return false;
                     }
                 }

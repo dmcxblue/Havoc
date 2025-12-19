@@ -42,24 +42,25 @@ DWORD GetReflectiveLoaderOffset( PVOID ReflectiveLdrAddr )
     UINT_PTR                AddrOfNameOrdinals  = 0;
     DWORD                   FunctionCounter     = 0;
     PCHAR                   FunctionName        = NULL;
+    UINT_PTR                BaseAddr            = (UINT_PTR)ReflectiveLdrAddr;  // Cast PVOID to UINT_PTR
 
     NtHeaders           = RVA( PIMAGE_NT_HEADERS, ReflectiveLdrAddr, ( ( PIMAGE_DOS_HEADER ) ReflectiveLdrAddr )->e_lfanew );
-    ExportDir           = ReflectiveLdrAddr + Rva2Offset( NtHeaders->OptionalHeader.DataDirectory[ IMAGE_DIRECTORY_ENTRY_EXPORT ].VirtualAddress, ReflectiveLdrAddr );
-    AddrOfNames         = ReflectiveLdrAddr + Rva2Offset( ExportDir->AddressOfNames, ReflectiveLdrAddr );
-    AddrOfNameOrdinals  = ReflectiveLdrAddr + Rva2Offset( ExportDir->AddressOfNameOrdinals, ReflectiveLdrAddr );
+    ExportDir           = (PIMAGE_EXPORT_DIRECTORY)(BaseAddr + Rva2Offset( NtHeaders->OptionalHeader.DataDirectory[ IMAGE_DIRECTORY_ENTRY_EXPORT ].VirtualAddress, BaseAddr ));
+    AddrOfNames         = BaseAddr + Rva2Offset( ExportDir->AddressOfNames, BaseAddr );
+    AddrOfNameOrdinals  = BaseAddr + Rva2Offset( ExportDir->AddressOfNameOrdinals, BaseAddr );
     FunctionCounter     = ExportDir->NumberOfNames;
 
     while ( FunctionCounter-- )
     {
-        FunctionName = ( PCHAR )( ReflectiveLdrAddr + Rva2Offset( DEREF_32( AddrOfNames ), ReflectiveLdrAddr ) );
+        FunctionName = ( PCHAR )( BaseAddr + Rva2Offset( DEREF_32( AddrOfNames ), BaseAddr ) );
         //                                  ReflectiveLoader                             KaynLoader
         if ( HashStringA( FunctionName ) == 0xa6caa1c5 || HashStringA( FunctionName ) == 0xffe885ef )
         {
             PRINTF( "FunctionName => %s\n", FunctionName );
-            AddrOfFunctions =   ReflectiveLdrAddr + Rva2Offset( ExportDir->AddressOfFunctions, ReflectiveLdrAddr );
+            AddrOfFunctions =   BaseAddr + Rva2Offset( ExportDir->AddressOfFunctions, BaseAddr );
             AddrOfFunctions +=  ( DEREF_16( AddrOfNameOrdinals ) * sizeof( DWORD ) );
 
-            return Rva2Offset( DEREF_32( AddrOfFunctions ), ReflectiveLdrAddr );
+            return Rva2Offset( DEREF_32( AddrOfFunctions ), BaseAddr );
         }
 
         AddrOfNames        += sizeof( DWORD );

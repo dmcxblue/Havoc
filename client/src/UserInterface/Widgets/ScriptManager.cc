@@ -83,7 +83,7 @@ void ScriptManager::SetupUi( QWidget *Form )
     tableLoadedScripts->setHorizontalHeaderItem(0, new QTableWidgetItem());
 
     gridLayout->addWidget( tableLoadedScripts, 0, 0, 1, 3 );
-    gridLayout->setMargin( 0 );
+    gridLayout->setContentsMargins( 0, 0, 0, 0 );  // setMargin removed in Qt 6
 
     QObject::connect( buttonLoadScript, &QPushButton::clicked, this, &ScriptManager::b_LoadScript );
 

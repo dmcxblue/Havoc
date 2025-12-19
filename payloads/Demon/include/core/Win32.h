@@ -64,7 +64,7 @@ typedef struct
 typedef struct _BUFFER
 {
     PVOID  Buffer;
-    UINT32 Length;
+    UINT32 Length;  // UINT32 for Parser API compat
 } BUFFER, *PBUFFER;
 
 typedef struct _ANONPIPE

@@ -12,9 +12,9 @@ import (
 func (db *DB) AgentAdd(agent *agent.Agent) error {
 
 	var err error
-	var AgentID int64
+	var AgentID uint64  // Unsigned to handle full 32-bit range
 
-	AgentID, err = strconv.ParseInt(agent.NameID, 16, 32)
+	AgentID, err = strconv.ParseUint(agent.NameID, 16, 32)  // ParseUint for unsigned agent IDs
 	if err != nil {
 		return err
 	}
@@ -81,10 +81,10 @@ func (db *DB) AgentAdd(agent *agent.Agent) error {
 func (db *DB) AgentUpdate(agent *agent.Agent) error {
 
 	var err error
-	var AgentID int64
+	var AgentID uint64  // Unsigned to handle full 32-bit range
 	var active int
 
-	AgentID, err = strconv.ParseInt(agent.NameID, 16, 32)
+	AgentID, err = strconv.ParseUint(agent.NameID, 16, 32)  // ParseUint for unsigned agent IDs
 	if err != nil {
 		return err
 	}

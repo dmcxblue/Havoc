@@ -7,6 +7,7 @@
 #include <QGraphicsPixmapItem>
 #include <QLabel>
 #include <QFile>
+#include <QFileDialog>
 #include <QTreeWidgetItem>
 #include <QHeaderView>
 #include <QScrollBar>
@@ -36,33 +37,31 @@ void ImageLabel::resizeEvent( QResizeEvent* event )
     resizeImage();
 }
 
-const QPixmap* ImageLabel::pixmap() const
+QPixmap ImageLabel::pixmap() const
 {
-    return label->pixmap();
+    return label->pixmap(Qt::ReturnByValue);  // Qt 5.15+ non-deprecated API
 }
 
 bool ImageLabel::event( QEvent* e )
 {
-    if ( e->type() == e->KeyPress )
-    {
-        auto eventKey = dynamic_cast<QKeyEvent*>( e );
+    return QWidget::event( e );
+}
 
-        if ( eventKey->key() == Qt::Key_Control )
-        {
-            // spdlog::info( "Key_Control pressed" );
-            key_ctrl = false;
-        }
+void ImageLabel::keyPressEvent( QKeyEvent* event )
+{
+    if ( event->key() == Qt::Key_Control )
+    {
+        key_ctrl = true;
     }
 
-    return QWidget::event( e );
+    QWidget::keyPressEvent( event );
 }
 
 void ImageLabel::keyReleaseEvent( QKeyEvent* event )
 {
     if ( event->key() == Qt::Key_Control )
     {
-        // spdlog::info( "Key_Control released" );
-        key_ctrl = true;
+        key_ctrl = false;
     }
 
     QWidget::keyReleaseEvent( event );
@@ -70,13 +69,57 @@ void ImageLabel::keyReleaseEvent( QKeyEvent* event )
 
 void ImageLabel::wheelEvent( QWheelEvent* ev )
 {
-    // spdlog::info( "wheelEvent: {}", ev->angleDelta().y() );
+    if ( ev->modifiers() & Qt::ControlModifier )
+    {
+        if ( ev->angleDelta().y() > 0 )
+            zoomIn();
+        else
+            zoomOut();
 
-    QWidget::wheelEvent( ev );
+        ev->accept();
+    }
+    else
+    {
+        QWidget::wheelEvent( ev );
+    }
+}
+
+void ImageLabel::zoomIn()
+{
+    zoomFactor *= 1.15;
+    if ( zoomFactor > 5.0 )
+        zoomFactor = 5.0;
+    applyZoom();
+}
+
+void ImageLabel::zoomOut()
+{
+    zoomFactor /= 1.15;
+    if ( zoomFactor < 0.1 )
+        zoomFactor = 0.1;
+    applyZoom();
+}
+
+void ImageLabel::zoomReset()
+{
+    zoomFactor = 1.0;
+    applyZoom();
+}
+
+void ImageLabel::applyZoom()
+{
+    if ( originalPixmap.isNull() )
+        return;
+
+    auto scaledSize = originalPixmap.size() * zoomFactor;
+    label->setPixmap( originalPixmap.scaled( scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation ) );
+    label->adjustSize();
 }
 
 void ImageLabel::setPixmap( const QPixmap &pixmap )
 {
+    originalPixmap = pixmap;
+    zoomFactor = 1.0;
     label->setPixmap( pixmap );
     scrollArea->setWidget( label );
     resizeImage();
@@ -126,6 +169,7 @@ LootWidget::LootWidget()
     ComboShow->addItem( QString( "Downloads" ) );
     ComboShow->setObjectName( QString::fromUtf8( "ComboShow" ) );
     ComboShow->setMinimumSize( QSize( 150, 0 ) );
+    ComboShow->setToolTip( "Switch between screenshots and downloads view" );
 
     gridLayout->addWidget( ComboShow, 0, 4, 1, 1 );
 
@@ -137,6 +181,7 @@ LootWidget::LootWidget()
     ComboAgentID = new QComboBox( this );
     ComboAgentID->setObjectName( QString::fromUtf8( "ComboAgentID" ) );
     ComboAgentID->setMinimumSize( QSize( 150, 0 ) );
+    ComboAgentID->setToolTip( "Filter loot by agent" );
     gridLayout->addWidget( ComboAgentID, 0, 2, 1, 1 );
 
     horizontalSpacer = new QSpacerItem( 40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum );
@@ -233,17 +278,26 @@ LootWidget::LootWidget()
     LabelShow->setText( "Show: " );
 
     ScreenshotMenu           = new QMenu( this );
-    ScreenshotActionDownload = new QAction( "Download" );
+    ScreenshotActionDownload = new QAction( "Save" );
 
     ScreenshotMenu->setStyleSheet( MenuStyle );
     ScreenshotMenu->addAction( ScreenshotActionDownload );
 
-    connect( this, &QTableWidget::customContextMenuRequested, this, &LootWidget::onScreenshotTableCtx );
+    DownloadMenu       = new QMenu( this );
+    DownloadActionSave = new QAction( "Save" );
+
+    DownloadMenu->setStyleSheet( MenuStyle );
+    DownloadMenu->addAction( DownloadActionSave );
+
+    connect( ScreenshotTable, &QTableWidget::customContextMenuRequested, this, &LootWidget::onScreenshotTableCtx );
+    connect( DownloadTable, &QTableWidget::customContextMenuRequested, this, &LootWidget::onDownloadTableCtx );
     connect( ScreenshotTable, &QTableWidget::clicked, this, &LootWidget::onScreenshotTableClick );
     connect( DownloadTable, &QTableWidget::clicked, this, &LootWidget::onDownloadTableClick );
     connect( splitter, &QSplitter::splitterMoved, ScreenshotImage, &ImageLabel::resizeImage );
     connect( ComboAgentID, &QComboBox::currentTextChanged, this, &LootWidget::onAgentChange );
     connect( ComboShow, &QComboBox::currentTextChanged, this, &LootWidget::onShowChange );
+    connect( ScreenshotActionDownload, &QAction::triggered, this, &LootWidget::onSaveScreenshot );
+    connect( DownloadActionSave, &QAction::triggered, this, &LootWidget::onSaveDownload );
 
     Reload();
 
@@ -297,9 +351,27 @@ void LootWidget::Reload()
     for ( auto& Session : HavocX::Teamserver.Sessions )
         ComboAgentID->addItem( Session.Name );
 
-    // TODO: iterate over table items and free memory
-    ScreenshotTable->setRowCount( 0 );
-    DownloadTable->setRowCount( 0 );
+    // Clear screenshot table items properly
+    while ( ScreenshotTable->rowCount() > 0 )
+    {
+        for ( int col = 0; col < ScreenshotTable->columnCount(); col++ )
+        {
+            auto item = ScreenshotTable->takeItem( 0, col );
+            delete item;
+        }
+        ScreenshotTable->removeRow( 0 );
+    }
+
+    // Clear download table items properly
+    while ( DownloadTable->rowCount() > 0 )
+    {
+        for ( int col = 0; col < DownloadTable->columnCount(); col++ )
+        {
+            auto item = DownloadTable->takeItem( 0, col );
+            delete item;
+        }
+        DownloadTable->removeRow( 0 );
+    }
 }
 
 void LootWidget::onScreenshotTableClick( const QModelIndex &index )
@@ -335,9 +407,27 @@ void LootWidget::onAgentChange( const QString& text )
 {
     ScreenshotImage->setPixmap( QPixmap() );
 
-    // todo: free columns items
-    for ( int i = ScreenshotTable->rowCount(); i >= 0; i-- )
-        ScreenshotTable->removeRow( i );
+    // Clear screenshot table items properly
+    while ( ScreenshotTable->rowCount() > 0 )
+    {
+        for ( int col = 0; col < ScreenshotTable->columnCount(); col++ )
+        {
+            auto item = ScreenshotTable->takeItem( 0, col );
+            delete item;
+        }
+        ScreenshotTable->removeRow( 0 );
+    }
+
+    // Clear download table items properly
+    while ( DownloadTable->rowCount() > 0 )
+    {
+        for ( int col = 0; col < DownloadTable->columnCount(); col++ )
+        {
+            auto item = DownloadTable->takeItem( 0, col );
+            delete item;
+        }
+        DownloadTable->removeRow( 0 );
+    }
 
     for ( auto& item : LootItems )
     {
@@ -413,6 +503,15 @@ void LootWidget::ScreenshotTableAdd( const QString &Name, const QString &Date )
 
 void LootWidget::DownloadTableAdd( const QString &Name, const QString &Size, const QString &Date )
 {
+    // Check for duplicates
+    for ( int i = 0; i < DownloadTable->rowCount(); i++ )
+    {
+        if ( DownloadTable->item( i, 0 )->text().compare( Name ) == 0 )
+        {
+            return;
+        }
+    }
+
     auto item_Name = new QTableWidgetItem( Name );
     auto item_Size = new QTableWidgetItem( Size );
     auto item_Date = new QTableWidgetItem( Date );
@@ -439,4 +538,86 @@ void LootWidget::onScreenshotTableCtx( const QPoint &pos )
         return;
 
     ScreenshotMenu->popup( ScreenshotTable->horizontalHeader()->viewport()->mapToGlobal( pos ) );
+}
+
+void LootWidget::onDownloadTableCtx( const QPoint &pos )
+{
+    if ( ! DownloadTable->itemAt( pos ) )
+        return;
+
+    DownloadMenu->popup( DownloadTable->horizontalHeader()->viewport()->mapToGlobal( pos ) );
+}
+
+void LootWidget::onSaveScreenshot()
+{
+    auto selectedItems = ScreenshotTable->selectedItems();
+    if ( selectedItems.isEmpty() )
+        return;
+
+    auto row      = selectedItems.first()->row();
+    auto fileName = ScreenshotTable->item( row, 0 )->text();
+    auto agentID  = ComboAgentID->currentText();
+
+    for ( auto& item : LootItems )
+    {
+        if ( agentID.compare( "[ All ]" ) == 0 || agentID.compare( item.AgentID ) == 0 )
+        {
+            if ( item.Type == LOOT_IMAGE && item.Data.Name.compare( fileName ) == 0 )
+            {
+                auto savePath = QFileDialog::getSaveFileName( this, "Save Screenshot", fileName, "Images (*.bmp *.png *.jpg)" );
+                if ( ! savePath.isEmpty() )
+                {
+                    QFile file( savePath );
+                    if ( file.open( QIODevice::WriteOnly ) )
+                    {
+                        file.write( item.Data.Data );
+                        file.close();
+                        spdlog::info( "Screenshot saved to: {}", savePath.toStdString() );
+                    }
+                    else
+                    {
+                        spdlog::error( "Failed to save screenshot to: {}", savePath.toStdString() );
+                    }
+                }
+                return;
+            }
+        }
+    }
+}
+
+void LootWidget::onSaveDownload()
+{
+    auto selectedItems = DownloadTable->selectedItems();
+    if ( selectedItems.isEmpty() )
+        return;
+
+    auto row      = selectedItems.first()->row();
+    auto fileName = DownloadTable->item( row, 0 )->text();
+    auto agentID  = ComboAgentID->currentText();
+
+    for ( auto& item : LootItems )
+    {
+        if ( agentID.compare( "[ All ]" ) == 0 || agentID.compare( item.AgentID ) == 0 )
+        {
+            if ( item.Type == LOOT_FILE && item.Data.Name.compare( fileName ) == 0 )
+            {
+                auto savePath = QFileDialog::getSaveFileName( this, "Save File", fileName );
+                if ( ! savePath.isEmpty() )
+                {
+                    QFile file( savePath );
+                    if ( file.open( QIODevice::WriteOnly ) )
+                    {
+                        file.write( item.Data.Data );
+                        file.close();
+                        spdlog::info( "File saved to: {}", savePath.toStdString() );
+                    }
+                    else
+                    {
+                        spdlog::error( "Failed to save file to: {}", savePath.toStdString() );
+                    }
+                }
+                return;
+            }
+        }
+    }
 }

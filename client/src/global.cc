@@ -1,7 +1,10 @@
 #include <global.hpp>
 #include <random>
+#include <algorithm>
 
 #include <Havoc/Connector.hpp>
+#include <UserInterface/Widgets/TeamserverTabSession.h>
+#include <UserInterface/Widgets/SessionTable.hpp>
 
 #include <QFileDialog>
 
@@ -9,8 +12,8 @@ using namespace std;
 using namespace HavocNamespace;
 using namespace HavocNamespace::HavocSpace;
 
-string HavocNamespace::Version  = "0.7";
-string HavocNamespace::CodeName = "Bites The Dust";
+string HavocNamespace::Version  = "0.7.1";
+string HavocNamespace::CodeName = "Mind Awake";
 
 // Global Variables in the Havoc Namespace
 HavocSpace::Havoc* HavocNamespace::HavocApplication;
@@ -100,4 +103,26 @@ void Util::SessionItem::Export()
             messageBox.exec();
         }
     }
+}
+
+void Util::SessionItem::Remove()
+{
+    // Remove from session table
+    auto sessionTable = HavocX::Teamserver.TabSession->SessionTableWidget->SessionTableWidget;
+    for ( int i = 0; i < sessionTable->rowCount(); i++ )
+    {
+        if ( sessionTable->item( i, 0 )->text().compare( Name ) == 0 )
+        {
+            sessionTable->removeRow( i );
+            break;
+        }
+    }
+
+    // Remove from sessions vector
+    auto& sessions = HavocX::Teamserver.Sessions;
+    sessions.erase(
+        std::remove_if( sessions.begin(), sessions.end(),
+            [this]( const SessionItem& s ) { return s.Name == Name; } ),
+        sessions.end()
+    );
 }
