@@ -2,6 +2,8 @@
 
 #include <Havoc/Havoc.hpp>
 
+#include <algorithm>
+
 #include <UserInterface/Widgets/SessionGraph.hpp>
 #include <UserInterface/Widgets/DemonInteracted.h>
 #include <UserInterface/Widgets/TeamserverTabSession.h>
@@ -87,15 +89,20 @@ void GraphWidget::GraphNodeRemove( SessionItem Session )
     {
         if ( Session.Name.compare( NodeList[ i ]->Name ) == 0 )
         {
-            GraphScene->removeItem( NodeList[ i ]->Node->NodeEdge );
-            GraphScene->removeItem( NodeList[ i ]->Node );
+            auto member = NodeList[ i ];
+
+            GraphScene->removeItem( member->Node->NodeEdge );
+            GraphScene->removeItem( member->Node );
+
+            // Remove from parent's children list before erasing from NodeList
+            if ( member->Node->Parent )
+                member->Node->Parent->removeChild( member->Node );
 
             NodeList.erase( NodeList.begin() + i );
-            MainNode->Node->removeChild( NodeList[ i ]->Node );
 
-            /* delete NodeList[ i ]->Node->NodeEdge;
-            delete NodeList[ i ]->Node;
-            delete NodeList[ i ]; */
+            delete member->Node->NodeEdge;
+            delete member->Node;
+            delete member;
 
             return;
         }
@@ -730,7 +737,7 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
                 }
                 else if ( action->text().compare( "Remove" ) == 0 )
                 {
-                    // TODO: Add a function to Session item that removes itself from the session table and graph.
+                    // Remove from session table
                     for ( int i = 0; i < HavocX::Teamserver.TabSession->SessionTableWidget->SessionTableWidget->rowCount(); i++ )
                     {
                         auto Row = HavocX::Teamserver.TabSession->SessionTableWidget->SessionTableWidget->item( i, 0 )->text();
@@ -738,11 +745,21 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
                         if ( Row.compare( Session.Name ) == 0 )
                         {
                             HavocX::Teamserver.TabSession->SessionTableWidget->SessionTableWidget->removeRow( i );
+                            break;
                         }
                     }
 
-                    delete NodeEdge;
-                    delete this;
+                    // Remove from Sessions vector
+                    auto& sessions = HavocX::Teamserver.Sessions;
+                    sessions.erase(
+                        std::remove_if( sessions.begin(), sessions.end(),
+                            [&Session]( const Util::SessionItem& s ) { return s.Name == Session.Name; } ),
+                        sessions.end()
+                    );
+
+                    // Remove from graph (handles scene removal, NodeList, parent children, and cleanup)
+                    graph->GraphNodeRemove( Session );
+                    return;
                 }
                 else if ( action->text().compare( "Thread" ) == 0 || action->text().compare( "Process" ) == 0 )
                 {
