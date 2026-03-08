@@ -265,6 +265,8 @@ Several example profiles are included in `profiles/`:
 | Profile | Description |
 |---------|-------------|
 | `havoc.yaotl` | Basic default profile with minimal configuration |
+| `http.yaotl` | Plain HTTP listener with SharePoint/OneDrive sync cover |
+| `https.yaotl` | TLS-encrypted listener with Outlook/Exchange cover |
 | `http_smb.yaotl` | HTTP listener with Teams-themed malleable profile + SMB pivot |
 | `webhook_example.yaotl` | Discord webhook notification example |
 | `long_haul.yaotl` | Low-and-slow profile for persistent long-term operations |

