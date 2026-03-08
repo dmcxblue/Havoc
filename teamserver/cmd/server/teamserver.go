@@ -144,7 +144,7 @@ func (t *Teamserver) Start() {
 			os.Exit(0)
 		}
 
-		err = os.WriteFile(keyPath, Key, 0644)
+		err = os.WriteFile(keyPath, Key, 0600)
 		if err != nil {
 			logger.Error("Couldn't save server cert file: " + err.Error())
 			os.Exit(0)

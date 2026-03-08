@@ -2,8 +2,7 @@ name: Documentation Bug Report
 description: File a bug report for the Documentation relating to the Havoc Framework.
 title: "[File a bug report for the Havoc Framework Documentation]: "
 labels: ["documentation"]
-assignees: 
-  - C5pider
+assignees: []
 body: 
   - type: markdown
     attributes: 

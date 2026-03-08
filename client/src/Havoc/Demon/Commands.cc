@@ -575,7 +575,7 @@ std::vector<DemonCommands::Command_t> DemonCommands::DemonCommandList = {
                     .Options        = {
                         "0  => WaitForSingleObjectEx (No Obfuscation. simple sleep)",
                         "1  => Foliage (by @ilove2pwn_)",
-                        "2  => Ekko (by @C5pider, @peterwintrsmith and @modexpblog)",
+                        "2  => Ekko (by @peterwintrsmith and @modexpblog)",
                     },
                 },
                 {

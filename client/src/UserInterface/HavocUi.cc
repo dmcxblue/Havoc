@@ -195,7 +195,7 @@ void HavocNamespace::UserInterface::HavocUi::OneSecondTick()
 
 }
 
-void HavocNamespace::UserInterface::HavocUi::MarkSessionAs(HavocNamespace::Util::SessionItem Session, QString Mark)
+void HavocNamespace::UserInterface::HavocUi::MarkSessionAs(HavocNamespace::Util::SessionItem& Session, QString Mark)
 {
     for ( int i = 0; i <  HavocX::Teamserver.TabSession->SessionTableWidget->SessionTableWidget->rowCount(); i++ )
     {
@@ -319,15 +319,15 @@ void HavocNamespace::UserInterface::HavocUi::UpdateSessionsHealth()
             uint32_t EndMinute   = ( session.WorkingHours >>  0 ) & 0b111111;
             bool isOffHours = false;
 
-            if ( StartHour < Now.time().hour() || EndHour > Now.time().hour() ) {
+            if ( Now.time().hour() < StartHour || Now.time().hour() > EndHour ) {
                 isOffHours = true;
             }
 
-            if ( StartHour == Now.time().hour() && StartMinute < Now.time().minute() ) {
+            if ( Now.time().hour() == StartHour && Now.time().minute() < StartMinute ) {
                 isOffHours = true;
             }
 
-            if ( EndHour == Now.time().hour() && EndMinute > Now.time().minute() ) {
+            if ( Now.time().hour() == EndHour && Now.time().minute() > EndMinute ) {
                 isOffHours = true;
             }
 

@@ -10,12 +10,16 @@ Teamserver {
 }
 
 Operators {
-    user "5pider" {
+    user "operator" {
         Password = "password1234"
     }
 
     user "Neo" {
         Password = "password1234"
+    }
+
+    user "<YOUR_USERNAME>" {
+        Password = "<YOUR_PASSWORD>"
     }
 }
 

@@ -65,7 +65,7 @@ public:
     HavocSpace::DBManager* dbManager                     = {};
 
 public:
-    void MarkSessionAs( HavocNamespace::Util::SessionItem session, QString Mark );
+    void MarkSessionAs( HavocNamespace::Util::SessionItem& session, QString Mark );
     void UpdateSessionsHealth();
     void setupUi( QMainWindow *Havoc );
     void retranslateUi( QMainWindow *Havoc ) const;

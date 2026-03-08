@@ -10,12 +10,16 @@ Teamserver {
 }
 
 Operators {
-    user "5pider" {
+    user "operator" {
         Password = "password1234"
     }
 
     user "Neo" {
         Password = "password1234"
+    }
+
+    user "<YOUR_USERNAME>" {
+        Password = "<YOUR_PASSWORD>"
     }
 }
 
@@ -23,7 +27,7 @@ Listeners {
     Http {
         Name         = "teams profile - http"
         Hosts        = [
-            "5pider.net", # our callback host.
+            "example.com", # our callback host.
         ]
         HostBind     = "0.0.0.0" # the address where the listener should bind to. 
         HostRotation = "round-robin"

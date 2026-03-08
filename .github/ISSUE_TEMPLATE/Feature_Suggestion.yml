@@ -2,8 +2,7 @@ name: Feature Suggestion
 description: File a feature suggestion for the Havoc Framework
 title: "[Feature Suggestions/Enhancements]: "
 labels: ["enhancement"]
-assignees:
-  - C5pider
+assignees: []
 body:
   - type: markdown
     attributes:

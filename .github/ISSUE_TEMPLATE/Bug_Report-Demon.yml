@@ -2,8 +2,7 @@ name: Demon-Implant Bug Report
 description: File a bug report for the Demon Implant
 title: "[File a bug report for the Demon Implant]: "
 labels: ["bug"]
-assignees: 
-  - C5pider
+assignees: []
 body: 
   - type: markdown
     attributes:

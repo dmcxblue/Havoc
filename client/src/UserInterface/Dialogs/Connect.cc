@@ -349,7 +349,7 @@ void HavocNamespace::UserInterface::Dialogs::Connect::onButton_NewProfile()
 
     lineEdit_Host->setText( "127.0.0.1" );
     lineEdit_Port->setText( "40056" );
-    lineEdit_User->setText( "5pider" );
+    lineEdit_User->setText( "operator" );
     lineEdit_Password->setText( "password" );
 }
 

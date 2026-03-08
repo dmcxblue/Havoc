@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	//"encoding/hex"
 	"io"
 	"log"
 	"net/http"
@@ -65,7 +64,7 @@ func (h *HTTP) generateCertFiles() bool {
 		return false
 	}
 
-	err = os.WriteFile(h.TLS.KeyPath, h.TLS.Key, 0644)
+	err = os.WriteFile(h.TLS.KeyPath, h.TLS.Key, 0600)
 	if err != nil {
 		logger.Error("Couldn't save server key file: " + err.Error())
 		return false
@@ -86,7 +85,6 @@ func (h *HTTP) fake404(ctx *gin.Context) {
 	}
 	ctx.Header("Server", "nginx")
 	ctx.Header("Content-Type", "text/html")
-	ctx.Header("X-Havoc", "true")
 	ctx.Writer.Write(html)
 }
 

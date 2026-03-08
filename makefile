@@ -9,7 +9,7 @@ all: ts-build client-build
 # teamserver building target
 ts-build:
 	@ echo "[*] building teamserver"
-	@ ./teamserver/Install.sh
+	@ if [ ! -d "data" ]; then mkdir data; fi
 	@ cd teamserver; GO111MODULE="on" go build -ldflags="-s -w -X cmd.VersionCommit=$(git rev-parse HEAD)" -o ../havoc main.go
 	@ sudo setcap 'cap_net_bind_service=+ep' havoc # this allows you to run the server as a regular user
 

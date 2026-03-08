@@ -62,8 +62,8 @@ PyTypeObject PyEventClass_Type = {
 #define AllocMov( des, src, size )                          \
     if ( size > 0 )                                         \
     {                                                       \
-        des = ( char* ) malloc( size * sizeof( char ) );    \
-        memset( des, 0, size );                             \
+        des = ( char* ) malloc( ( size + 1 ) * sizeof( char ) );  \
+        memset( des, 0, size + 1 );                             \
         std::strcpy( des, src );                            \
     }
 
@@ -104,6 +104,7 @@ PyObject* EventClass_OnNewSession( PPyEvents self, PyObject *args )
         return NULL;
     }
 
+    Py_INCREF(Function);
     HavocX::Teamserver.RegisteredCallbacks.push_back(Function);
 
     Py_RETURN_NONE;

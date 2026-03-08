@@ -3,6 +3,8 @@
 
 # ignore cmake generated stuff
 Client/Build
+client/Build/
+client/build/
 **/cmake-build-debug/
 
 # dont commit your loot
@@ -13,13 +15,17 @@ Client/Data/database.db
 
 # ignore go stuff
 Teamserver/go.sum
+teamserver/go.sum
 
 # ignore compiled binaries
 Client/Havoc
+client/Havoc
 Teamserver/teamserver
 
 # ignore MUSL C Compiler stuff
 Teamserver/data/x86_64-w64-mingw32-cross/
+data/x86_64-w64-mingw32-cross/
+data/i686-w64-mingw32-cross/
 
 # ignore havoc binary
 havoc
@@ -28,6 +34,24 @@ havoc
 data/
 
 # ignore client directories
-client/Build/
-client/Havoc
 client/Modules/
+
+# Claude Code
+CLAUDE.md
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor/IDE
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~

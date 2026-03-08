@@ -70,9 +70,9 @@ PyTypeObject PyTreeClass_Type = {
 #define AllocMov( des, src, size )                          \
     if ( size > 0 )                                         \
     {                                                       \
-        des = ( char* ) malloc( size * sizeof( char ) );    \
-        memset( des, 0, size );                             \
-        std::strncpy( des, src, size );                     \
+        des = ( char* ) malloc( ( size + 1 ) * sizeof( char ) );  \
+        memset( des, 0, size + 1 );                             \
+        std::strncpy( des, src, size );                         \
     }
 
 void TreeClass_dealloc( PPyTreeClass self )
