@@ -73,9 +73,10 @@ type Endpoint struct {
 type Teamserver struct {
 	Flags      TeamserverFlags
 	Profile    *profile.Profile
-	Clients    sync.Map // map[string]*Client
-	Users      []Users
-	EventsList []packager.Package
+	Clients     sync.Map // map[string]*Client
+	Users       []Users
+	EventsMutex sync.RWMutex
+	EventsList  []packager.Package
 	Service    *service.Service
 	WebHooks   *webhook.WebHook
 	DB         *db.DB

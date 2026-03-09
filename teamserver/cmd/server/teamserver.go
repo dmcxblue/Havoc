@@ -52,7 +52,7 @@ func (t *Teamserver) SetServerFlags(flags TeamserverFlags) {
 func (t *Teamserver) Start() {
 	logger.Debug("Starting teamserver...")
 	var (
-		ServerFinished      chan bool
+		ServerFinished      = make(chan bool, 1)
 		TeamserverWs        string
 		TeamserverPath, err = os.Getwd()
 		ListenerCount       int
@@ -228,12 +228,12 @@ func (t *Teamserver) Start() {
 		/* Start all HTTP/s listeners */
 		for _, listener := range t.Profile.Config.Listener.ListenerHTTP {
 			if listener.KillDate != "" {
-				t, err := time.Parse("2006-01-02 15:04:05", listener.KillDate)
+				parsedTime, err := time.Parse("2006-01-02 15:04:05", listener.KillDate)
 				if err != nil {
 					logger.Error("Failed to parse the kill date: " + err.Error())
 					return
 				}
-				KillDate = common.EpochTimeToSystemTime(t.Unix())
+				KillDate = common.EpochTimeToSystemTime(parsedTime.Unix())
 			} else {
 				KillDate = 0
 			}
@@ -307,12 +307,12 @@ func (t *Teamserver) Start() {
 		/* Start all SMB listeners */
 		for _, listener := range t.Profile.Config.Listener.ListenerSMB {
 			if listener.KillDate != "" {
-				t, err := time.Parse("2006-01-02 15:04:05", listener.KillDate)
+				parsedTime, err := time.Parse("2006-01-02 15:04:05", listener.KillDate)
 				if err != nil {
 					logger.Error("Failed to parse the kill date: " + err.Error())
 					return
 				}
-				KillDate = common.EpochTimeToSystemTime(t.Unix())
+				KillDate = common.EpochTimeToSystemTime(parsedTime.Unix())
 			} else {
 				KillDate = 0
 			}
@@ -384,17 +384,31 @@ func (t *Teamserver) Start() {
 			}
 
 			/* set config of http listener */
-			HandlerData.Hosts = strings.Split(Data["Hosts"].(string), ", ")
-			HandlerData.HostBind = Data["HostBind"].(string)
-			HandlerData.HostRotation = Data["HostRotation"].(string)
-			HandlerData.PortBind = Data["PortBind"].(string)
-			HandlerData.UserAgent = Data["UserAgent"].(string)
-			HandlerData.Headers = strings.Split(Data["Headers"].(string), "\r\n")
-			HandlerData.Uris = strings.Split(Data["Uris"].(string), ", ")
+			if v, ok := Data["Hosts"].(string); ok {
+				HandlerData.Hosts = strings.Split(v, ", ")
+			}
+			if v, ok := Data["HostBind"].(string); ok {
+				HandlerData.HostBind = v
+			}
+			if v, ok := Data["HostRotation"].(string); ok {
+				HandlerData.HostRotation = v
+			}
+			if v, ok := Data["PortBind"].(string); ok {
+				HandlerData.PortBind = v
+			}
+			if v, ok := Data["UserAgent"].(string); ok {
+				HandlerData.UserAgent = v
+			}
+			if v, ok := Data["Headers"].(string); ok {
+				HandlerData.Headers = strings.Split(v, "\r\n")
+			}
+			if v, ok := Data["Uris"].(string); ok {
+				HandlerData.Uris = strings.Split(v, ", ")
+			}
 			HandlerData.BehindRedir = t.Profile.Config.Demon.TrustXForwardedFor
 
 			HandlerData.Secure = false
-			if Data["Secure"].(string) == "true" {
+			if v, ok := Data["Secure"].(string); ok && v == "true" {
 				HandlerData.Secure = true
 			}
 
@@ -438,7 +452,9 @@ func (t *Teamserver) Start() {
 				continue
 			}
 
-			HandlerData.Endpoint = Data["Endpoint"].(string)
+			if v, ok := Data["Endpoint"].(string); ok {
+				HandlerData.Endpoint = v
+			}
 
 			if err := t.ListenerStart(handlers.LISTENER_EXTERNAL, HandlerData); err != nil && err.Error() != "listener already exists" {
 				logger.SetStdOut(os.Stderr)
@@ -463,7 +479,9 @@ func (t *Teamserver) Start() {
 				continue
 			}
 
-			HandlerData.PipeName = Data["PipeName"].(string)
+			if v, ok := Data["PipeName"].(string); ok {
+				HandlerData.PipeName = v
+			}
 
 			if err := t.ListenerStart(handlers.LISTENER_PIVOT_SMB, HandlerData); err != nil && err.Error() != "listener already exists" {
 				logger.SetStdOut(os.Stderr)
@@ -558,7 +576,8 @@ func (t *Teamserver) handleRequest(id string) {
 
 	isExist := false
 	t.Clients.Range(func(key, value any) bool {
-		if client.Username == pk.Head.User {
+		existing := value.(*Client)
+		if existing.Authenticated && existing.Username == pk.Head.User {
 			err := t.SendEvent(id, events.UserAlreadyExits())
 			if err != nil {
 				logger.Error("couldn't send event to client "+colors.Yellow(id)+":", err)
@@ -743,6 +762,8 @@ func (t *Teamserver) EventListenerError(ListenerName string, Error error) {
 	t.EventBroadcast("", pk)
 
 	// also remove the listener from the init packages.
+	t.EventsMutex.Lock()
+	defer t.EventsMutex.Unlock()
 	for EventID := range t.EventsList {
 		if t.EventsList[EventID].Head.Event == packager.Type.Listener.Type {
 			if t.EventsList[EventID].Body.SubEvent == packager.Type.Listener.Add {
@@ -772,15 +793,12 @@ func (t *Teamserver) SendEvent(id string, pk packager.Package) error {
 	if isOk {
 		client := value.(*Client)
 		client.Mutex.Lock()
+		defer client.Mutex.Unlock()
 
 		err = client.Connection.WriteMessage(websocket.BinaryMessage, buffer.Bytes())
 		if err != nil {
-			// TODO: comment this line out as it seems to crash the server
-			//t.Clients[id].Mutex.Unlock()
 			return err
 		}
-
-		client.Mutex.Unlock()
 
 	} else {
 		return errors.New(fmt.Sprintf("client (%v) doesn't exist anymore", colors.Red(id)))
@@ -820,22 +838,33 @@ func (t *Teamserver) EventAppend(event packager.Package) []packager.Package {
 		return t.EventsList
 	}
 
+	t.EventsMutex.Lock()
+	defer t.EventsMutex.Unlock()
+
 	if event.Head.OneTime != "true" {
 		t.EventsList = append(t.EventsList, event)
-		return append(t.EventsList, event)
+		return t.EventsList
 	}
 
 	return nil
 }
 
 func (t *Teamserver) EventRemove(EventID int) []packager.Package {
+	t.EventsMutex.Lock()
+	defer t.EventsMutex.Unlock()
+
 	t.EventsList = append(t.EventsList[:EventID], t.EventsList[EventID+1:]...)
 
-	return append(t.EventsList[:EventID], t.EventsList[EventID+1:]...)
+	return t.EventsList
 }
 
 func (t *Teamserver) SendAllPackagesToNewClient(ClientID string) {
-	for _, Package := range t.EventsList {
+	t.EventsMutex.RLock()
+	eventsCopy := make([]packager.Package, len(t.EventsList))
+	copy(eventsCopy, t.EventsList)
+	t.EventsMutex.RUnlock()
+
+	for _, Package := range eventsCopy {
 		err := t.SendEvent(ClientID, Package)
 		if err != nil {
 			logger.Error("error while sending info to client("+ClientID+"): ", err)

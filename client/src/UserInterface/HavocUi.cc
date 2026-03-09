@@ -247,6 +247,8 @@ void HavocNamespace::UserInterface::HavocUi::MarkSessionAs(HavocNamespace::Util:
 
             HavocX::Connector->SendPackage( Package );
 
+            delete Package;
+
             break;
         }
     }

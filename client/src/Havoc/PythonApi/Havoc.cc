@@ -111,10 +111,10 @@ PyObject* PythonAPI::Havoc::Core::GetAgents( PyObject *self, PyObject *args )
 
     AgentsID = Py_BuildValue( "s", "Demon" );
     PyList_SetItem( AgentsObjects, 0, AgentsID );
-    for ( int i = 1; i < NumberOfSessions; ++i )
+    for ( uint32_t i = 0; i < NumberOfSessions; ++i )
     {
         AgentsID = Py_BuildValue( "s", Agents[ i ].Name.toStdString().c_str() );
-        PyList_SetItem( AgentsObjects, i, AgentsID );
+        PyList_SetItem( AgentsObjects, i + 1, AgentsID );
     }
 
     return AgentsObjects;
@@ -180,6 +180,8 @@ PyObject* PythonAPI::Havoc::Core::GeneratePayload( PyObject *self, PyObject *arg
     Package->Body = Body;
 
     HavocX::Connector->SendPackage( Package );
+
+    delete Package;
 
     Py_RETURN_NONE;
 }

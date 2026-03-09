@@ -46,6 +46,10 @@ func (p *Profile) ServerPort() int {
 func (p *Profile) ListOfUsernames() []string {
 	var Usernames []string
 
+	if p.Config.Operators == nil {
+		return Usernames
+	}
+
 	for _, user := range p.Config.Operators.Users {
 		Usernames = append(Usernames, user.Name)
 	}

@@ -728,6 +728,8 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
                             };
 
                             HavocX::Connector->SendPackage( Package );
+
+                            delete Package;
                         }
                     }
                 }

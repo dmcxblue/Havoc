@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	_ "embed"
 	"io"
 	"log"
 	"net/http"
@@ -19,6 +20,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+//go:embed 404.html
+var fake404Page []byte
 
 func NewConfigHttp() *HTTP {
 	var config = new(HTTP)
@@ -78,14 +82,9 @@ func (h *HTTP) generateCertFiles() bool {
 // fake nginx 404 page
 func (h *HTTP) fake404(ctx *gin.Context) {
 	ctx.Writer.WriteHeader(http.StatusNotFound)
-	html, err := os.ReadFile("teamserver/pkg/handlers/404.html")
-	if err != nil {
-		logger.Debug("Could not read fake 404 page: " + err.Error())
-		return
-	}
 	ctx.Header("Server", "nginx")
 	ctx.Header("Content-Type", "text/html")
-	ctx.Writer.Write(html)
+	ctx.Writer.Write(fake404Page)
 }
 
 func (h *HTTP) request(ctx *gin.Context) {

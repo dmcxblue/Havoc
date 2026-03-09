@@ -23,9 +23,14 @@ Connector::Connector( Util::ConnectionInfo* ConnectionInfo )
         if ( Package != nullptr )
         {
             if ( ! Packager )
+            {
+                delete Package;
                 return;
+            }
 
             Packager->DispatchPackage( Package );
+
+            delete Package;
 
             return;
         }
@@ -66,6 +71,7 @@ bool Connector::Disconnect()
 
 Connector::~Connector() noexcept
 {
+    delete this->Packager;
     delete this->Socket;
 }
 
