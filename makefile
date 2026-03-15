@@ -33,6 +33,7 @@ client-build:
 	@ git submodule update --init --recursive
 	@ mkdir -p client/Build; cd client/Build; cmake ..
 	@ if [ -d "client/Modules" ]; then echo "Modules installed"; else git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch `git rev-parse --abbrev-ref HEAD`; fi
+	@ if [ -f "client/Modules/nanodump/nanodump.py" ]; then sed -i 's|C:\\Windows\\notepad.exe|C:\\\\Windows\\\\notepad.exe|g' client/Modules/nanodump/nanodump.py; fi
 	@ cmake --build client/Build -- -j 4
 
 client-build-mac:
@@ -40,6 +41,7 @@ client-build-mac:
 	@ git submodule update --init --recursive
 	@ mkdir -p client/Build; cd client/Build; cmake ..
 	@ if [ -d "client/Modules" ]; then echo "Modules installed"; else git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch `git rev-parse --abbrev-ref HEAD`; fi
+	@ if [ -f "client/Modules/nanodump/nanodump.py" ]; then sed -i 's|C:\\Windows\\notepad.exe|C:\\\\Windows\\\\notepad.exe|g' client/Modules/nanodump/nanodump.py; fi
 	@ rm client/external/toml/toml/exception.hpp ; cp exception_mac.hpp client/external/toml/toml/exception.hpp
 	@ cmake --build client/Build -- -j 4
 
