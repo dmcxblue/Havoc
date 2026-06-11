@@ -83,7 +83,9 @@ func (t *Teamserver) Start() {
 	t.Server.Engine.GET("/havoc/", func(context *gin.Context) {
 
 		var (
-			upgrade   websocket.Upgrader
+			upgrade = websocket.Upgrader{
+				CheckOrigin: func(r *http.Request) bool { return true },
+			}
 			WebSocket *websocket.Conn
 			ClientID  = utils.GenerateID(6)
 		)

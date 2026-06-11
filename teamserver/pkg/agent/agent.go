@@ -619,6 +619,9 @@ func (a *Agent) IsKnownRequestID(teamserver TeamServer, RequestID uint32, Comman
 		return true
 	}
 
+	a.TasksMtx.Lock()
+	defer a.TasksMtx.Unlock()
+
 	for i := range a.Tasks {
 		if a.Tasks[i].RequestID == RequestID {
 			return true
@@ -629,12 +632,18 @@ func (a *Agent) IsKnownRequestID(teamserver TeamServer, RequestID uint32, Comman
 
 // the operator added a new request/command
 func (a *Agent) AddRequest(job Job) []Job {
+	a.TasksMtx.Lock()
+	defer a.TasksMtx.Unlock()
+
 	a.Tasks = append(a.Tasks, job)
 	return a.Tasks
 }
 
 // after a request has been completed, we can forget about the RequestID so that it is no longer valid
 func (a *Agent) RequestCompleted(RequestID uint32) {
+	a.TasksMtx.Lock()
+	defer a.TasksMtx.Unlock()
+
 	for i := range a.Tasks {
 		if a.Tasks[i].RequestID == RequestID {
 			a.Tasks = append(a.Tasks[:i], a.Tasks[i+1:]...)
@@ -652,12 +661,20 @@ func (a *Agent) AddJobToQueue(job Job) []Job {
 		a.PivotAddJob(job)
 		// if it's a direct agent add the job to the direct agent
 	} else {
+		a.JobQueueMtx.Lock()
 		a.JobQueue = append(a.JobQueue, job)
+		a.JobQueueMtx.Unlock()
 	}
+
+	a.JobQueueMtx.Lock()
+	defer a.JobQueueMtx.Unlock()
 	return a.JobQueue
 }
 
 func (a *Agent) GetQueuedJobs() []Job {
+	a.JobQueueMtx.Lock()
+	defer a.JobQueueMtx.Unlock()
+
 	var Jobs []Job
 	var JobsSize = 0
 	var NumJobs = 0
@@ -819,7 +836,7 @@ func (a *Agent) DownloadAdd(FileID int, FilePath string, FileSize int64) error {
 			FileID:    FileID,
 			FilePath:  FilePath,
 			TotalSize: FileSize,
-			Progress:  FileSize,
+			Progress:  0,
 			State:     DOWNLOAD_STATE_RUNNING,
 		}
 
@@ -856,12 +873,17 @@ func (a *Agent) DownloadAdd(FileID int, FilePath string, FileSize int64) error {
 
 	download.LocalFile = DemonDownload + "/" + DownloadFile
 
+	a.DownloadsMtx.Lock()
 	a.Downloads = append(a.Downloads, download)
+	a.DownloadsMtx.Unlock()
 
 	return nil
 }
 
 func (a *Agent) DownloadWrite(FileID int, data []byte) error {
+	a.DownloadsMtx.Lock()
+	defer a.DownloadsMtx.Unlock()
+
 	for i := range a.Downloads {
 		if a.Downloads[i].FileID == FileID {
 			_, err := a.Downloads[i].File.Write(data)
@@ -885,6 +907,9 @@ func (a *Agent) DownloadWrite(FileID int, data []byte) error {
 }
 
 func (a *Agent) DownloadClose(FileID int) {
+	a.DownloadsMtx.Lock()
+	defer a.DownloadsMtx.Unlock()
+
 	for i := range a.Downloads {
 		if a.Downloads[i].FileID == FileID {
 			err := a.Downloads[i].File.Close()
@@ -899,6 +924,9 @@ func (a *Agent) DownloadClose(FileID int) {
 }
 
 func (a *Agent) DownloadGet(FileID int) *Download {
+	a.DownloadsMtx.Lock()
+	defer a.DownloadsMtx.Unlock()
+
 	for _, download := range a.Downloads {
 		if download.FileID == FileID {
 			return download
@@ -1103,7 +1131,8 @@ func (a *Agent) SocksClientRead(client *SocksClient) ([]byte, error) {
 			if client.Connected {
 
 				/* read from our socket to the data buffer or return error */
-				client.Conn.SetReadDeadline(time.Time{})
+				/* 64KB buffer with 30 second timeout to prevent unlimited blocking */
+				client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 				length, err := client.Conn.Read(data)
 				if err != nil {
 					return nil, err

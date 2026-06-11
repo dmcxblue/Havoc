@@ -9,8 +9,7 @@ QPushButton {
     border-radius: 2px;
     background-color: #bd93f9;
     color: #282a36;
-    padding-top: 30px;
-    padding-bottom: 30px;
+    padding: 5px 10px;
 }
 
 QPushButton:pressed {
@@ -19,8 +18,7 @@ QPushButton:pressed {
     border-radius: 2px;
     background-color: #282a36;
     color: #f8f8f2;
-    padding-top: 30px;
-    padding-bottom: 30px;
+    padding: 5px 10px;
 }
 
 QListWidget {
@@ -39,8 +37,7 @@ QLineEdit {
     background-color: #44475a;
     color: #f8f8f2;
     border-radius: 2px;
-    padding: 30px;
-    padding-left: 5px;
+    padding: 5px;
 }
 
 QLineEdit:read-only {

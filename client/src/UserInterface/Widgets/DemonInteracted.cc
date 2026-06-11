@@ -46,33 +46,45 @@ void DemonInteracted::DemonInput::handleTabKey()
 
 void DemonInteracted::DemonInput::handleUpKey()
 {
-    if ( CommandHistoryIndex == 0 )  {
+    if ( CommandHistory.empty() ) {
+        setText( "" );
+        return;
+    }
+
+    if ( CommandHistoryIndex == 0 ) {
         setText( "" );
         return;
     }
 
     CommandHistoryIndex--;
 
-    if ( CommandHistoryIndex >= 1 ) {
+    if ( CommandHistoryIndex < CommandHistory.size() ) {
         setText( CommandHistory.at( CommandHistoryIndex ) );
     } else {
-        if ( ! CommandHistory.empty() ) {
-            setText( CommandHistory.at( CommandHistoryIndex ) );
-        } else {
-            setText( "" );
-        }
+        setText( "" );
     }
 }
 
 void DemonInteracted::DemonInput::handleDownKey()
 {
-    if (CommandHistoryIndex < CommandHistory.size())
+    if ( CommandHistory.empty() ) {
+        setText( "" );
+        return;
+    }
+
+    if ( CommandHistoryIndex < CommandHistory.size() )
     {
         CommandHistoryIndex++;
-        setText(CommandHistory.at(CommandHistoryIndex - 1));
+        if ( CommandHistoryIndex > 0 && CommandHistoryIndex <= CommandHistory.size() ) {
+            setText( CommandHistory.at( CommandHistoryIndex - 1 ) );
+        } else {
+            setText( "" );
+        }
     }
     else
-        setText("");
+    {
+        setText( "" );
+    }
 }
 
 bool DemonInteracted::DemonInput::event( QEvent* e )

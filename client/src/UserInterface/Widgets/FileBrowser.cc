@@ -27,10 +27,20 @@ static auto JoinAtIndex( QStringList list, int index, QString sep ) -> QString
 auto PathGetParent( QString MainPath ) -> QString
 {
     auto Path = MainPath.toStdString();
-    auto Indx = 0;
 
-    for ( Indx = Path.size() ;; Indx-- )
-        if ( Path[ Indx ] == '\\' ) break;
+    if ( Path.empty() ) {
+        return QString();
+    }
+
+    auto Indx = static_cast<int>( Path.size() ) - 1;
+
+    while ( Indx >= 0 && Path[ Indx ] != '\\' ) {
+        Indx--;
+    }
+
+    if ( Indx <= 0 ) {
+        return QString();
+    }
 
     Path = Path.substr( 0, Indx );
 

@@ -53,7 +53,8 @@ DWORD GetReflectiveLoaderOffset( PVOID ReflectiveLdrAddr )
     while ( FunctionCounter-- )
     {
         FunctionName = ( PCHAR )( BaseAddr + Rva2Offset( DEREF_32( AddrOfNames ), BaseAddr ) );
-        //                                  ReflectiveLoader                             KaynLoader
+        /* Hash values for loader entry points - these fixed hashes may be signatured.
+         * Consider per-build randomization or alternative entry point detection. */
         if ( HashStringA( FunctionName ) == 0xa6caa1c5 || HashStringA( FunctionName ) == 0xffe885ef )
         {
             PRINTF( "FunctionName => %s\n", FunctionName );

@@ -50,6 +50,12 @@ Connector::Connector( Util::ConnectionInfo* ConnectionInfo )
     {
         MessageBox( "Teamserver error", Socket->errorString(), QMessageBox::Critical );
 
+        if ( this->Packager != nullptr )
+        {
+            delete this->Packager;
+            this->Packager = nullptr;
+        }
+
         Socket->close();
 
         Havoc::Exit();
@@ -71,6 +77,12 @@ bool Connector::Disconnect()
 
 Connector::~Connector() noexcept
 {
+    // Disconnect all signals before deleting to prevent dangling lambda references
+    if ( this->Socket != nullptr )
+    {
+        this->Socket->disconnect();
+    }
+
     delete this->Packager;
     delete this->Socket;
 }

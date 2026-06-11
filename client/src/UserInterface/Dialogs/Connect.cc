@@ -185,25 +185,24 @@ Util::ConnectionInfo HavocNamespace::UserInterface::Dialogs::Connect::StartDialo
 
     ConnectDialog->exec();
 
-    auto ConnectionInfo = new Util::ConnectionInfo;
+    Util::ConnectionInfo ConnectionInfo;
 
-    ConnectionInfo->Name     = lineEdit_Name->text();
-    ConnectionInfo->Host     = lineEdit_Host->text();
-    ConnectionInfo->Port     = lineEdit_Port->text();
-    ConnectionInfo->User     = lineEdit_User->text();
-    ConnectionInfo->Password = lineEdit_Password->text();
+    ConnectionInfo.Name     = lineEdit_Name->text();
+    ConnectionInfo.Host     = lineEdit_Host->text();
+    ConnectionInfo.Port     = lineEdit_Port->text();
+    ConnectionInfo.User     = lineEdit_User->text();
+    ConnectionInfo.Password = lineEdit_Password->text();
 
-    ProfileName = ConnectionInfo->Name.toStdString();
+    ProfileName = ConnectionInfo.Name.toStdString();
 
     if ( this->tryConnect )
     {
-        auto ConnectionInstant = new Connector( ConnectionInfo );
-
-        HavocX::Teamserver = *ConnectionInfo;
+        HavocX::Teamserver = ConnectionInfo;
+        auto ConnectionInstant = new Connector( &HavocX::Teamserver );
         HavocX::Connector  = ConnectionInstant;
 
         if ( this->isNewProfile ) {
-            if ( ! this->dbManager->addTeamserverInfo( *ConnectionInfo ) ) {
+            if ( ! this->dbManager->addTeamserverInfo( ConnectionInfo ) ) {
                 spdlog::warn( "Failed to add Teamserver Info to database" );
             }
         }
@@ -223,7 +222,7 @@ Util::ConnectionInfo HavocNamespace::UserInterface::Dialogs::Connect::StartDialo
 
     }
 
-    return *ConnectionInfo;
+    return ConnectionInfo;
 }
 
 void HavocNamespace::UserInterface::Dialogs::Connect::passDB(HavocNamespace::HavocSpace::DBManager* db)

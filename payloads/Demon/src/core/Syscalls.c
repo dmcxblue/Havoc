@@ -118,21 +118,22 @@ BOOL SysExtract(
         }
 
 #if _WIN64
-        /* check current instructions for:
-         *   mov r10, rcx
-         *   mov rcx, [ssn]
-         */
-        if ( DREF_U8( Function + Offset + 0x0 ) == 0x4C &&
-             DREF_U8( Function + Offset + 0x1 ) == 0x8B &&
-             DREF_U8( Function + Offset + 0x2 ) == 0xD1 &&
-             DREF_U8( Function + Offset + 0x3 ) == 0xB8 )
+        /* check current instructions for syscall stub pattern:
+         *   mov r10, rcx (4C 8B D1)
+         *   mov eax, [ssn] (B8)
+         * Using XOR-based comparison to avoid direct byte patterns in code */
+        {
+            BYTE b0 = DREF_U8( Function + Offset + 0x0 ) ^ 0x4C;
+            BYTE b1 = DREF_U8( Function + Offset + 0x1 ) ^ 0x8B;
+            BYTE b2 = DREF_U8( Function + Offset + 0x2 ) ^ 0xD1;
+            BYTE b3 = DREF_U8( Function + Offset + 0x3 ) ^ 0xB8;
+            if ( (b0 | b1 | b2 | b3) == 0 ) {
 #else
         /* check current instructions for:
          *   mov eax, [ssn]
          */
-        if ( DREF_U8( Function + Offset + 0x0 ) == 0xB8 )
+        if ( (DREF_U8( Function + Offset + 0x0 ) ^ 0xB8) == 0 ) {
 #endif
-        {
             /* if the Ssn param has been specified try to get the Ssn of the function */
             if ( Ssn )
             {
@@ -170,6 +171,9 @@ BOOL SysExtract(
             /* we should be finished */
             break;
         }
+#if _WIN64
+        }
+#endif
 
         Offset++;
     } while ( TRUE );
@@ -214,22 +218,35 @@ BOOL FindSsnOfHookedSyscall(
     }
 
 
-    for ( UINT32 i = 1; i < 500; ++i )
-    {
-        // try with a syscall above ours
-        NeighbourSyscall = C_PTR( U_PTR( Function ) + ( SyscallSize * i ) );
-        if( SysExtract( NeighbourSyscall, FALSE, &NeighbourSsn, NULL ) )
-        {
-            *Ssn = NeighbourSsn - i;
-            return TRUE;
-        }
+    /* Randomize search direction and vary search radius to avoid predictable patterns */
+    UINT32 MaxRange    = 500;
+    UINT32 StartOffset = ( RandomNumber32() % 10 ) + 1;  /* Random start offset 1-10 */
+    BOOL   SearchUp    = ( RandomNumber32() % 2 ) == 0;  /* Random initial direction */
 
-        // try with a syscall below ours
-        NeighbourSyscall = C_PTR( U_PTR( Function ) - ( SyscallSize * i ) );
-        if( SysExtract( NeighbourSyscall, FALSE, &NeighbourSsn, NULL ) )
+    for ( UINT32 i = StartOffset; i < MaxRange; ++i )
+    {
+        /* Alternate direction with random bias */
+        if ( SearchUp || ( RandomNumber32() % 3 ) == 0 )
         {
-            *Ssn = NeighbourSsn + i;
-            return TRUE;
+            // try with a syscall above ours
+            NeighbourSyscall = C_PTR( U_PTR( Function ) + ( SyscallSize * i ) );
+            if( SysExtract( NeighbourSyscall, FALSE, &NeighbourSsn, NULL ) )
+            {
+                *Ssn = NeighbourSsn - i;
+                return TRUE;
+            }
+            SearchUp = FALSE;
+        }
+        else
+        {
+            // try with a syscall below ours
+            NeighbourSyscall = C_PTR( U_PTR( Function ) - ( SyscallSize * i ) );
+            if( SysExtract( NeighbourSyscall, FALSE, &NeighbourSsn, NULL ) )
+            {
+                *Ssn = NeighbourSsn + i;
+                return TRUE;
+            }
+            SearchUp = TRUE;
         }
     }
 

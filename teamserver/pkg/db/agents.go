@@ -41,6 +41,7 @@ func (db *DB) AgentAdd(agent *agent.Agent) error {
 	if err != nil {
 		return err
 	}
+	defer stmt.Close()
 
 	/* add the data to the agent table */
 	_, err = stmt.Exec(
@@ -99,6 +100,7 @@ func (db *DB) AgentUpdate(agent *agent.Agent) error {
 	if err != nil {
 		return err
 	}
+	defer stmt.Close()
 
 	if agent.Active {
 		active = 1
@@ -136,8 +138,6 @@ func (db *DB) AgentUpdate(agent *agent.Agent) error {
 	if err != nil {
 		return err
 	}
-
-	stmt.Close()
 
 	return nil
 }

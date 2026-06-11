@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -220,12 +221,13 @@ func (b *Builder) Build() bool {
 		AsmObj         string
 	)
 
-	b.CompileDir = "/tmp/" + utils.GenerateID(10) + "/"
-	err := os.Mkdir(b.CompileDir, os.ModePerm)
+	var err error
+	b.CompileDir, err = os.MkdirTemp("", "havoc-build-")
 	if err != nil {
 		logger.Error("Failed to create compile directory: " + err.Error())
 		return false
 	}
+	b.CompileDir += "/"
 
 	if b.outputPath == "" && b.FileExtenstion != "" {
 		b.SetOutputPath(b.CompileDir + PayloadName + b.FileExtenstion)
@@ -281,31 +283,29 @@ func (b *Builder) Build() bool {
 		}
 	}
 
-	// add compiler
+	// add compiler with explicit architecture flags
 	if b.config.Arch == ARCHITECTURE_X64 {
 		abs, err := filepath.Abs(b.compilerOptions.Config.Compiler64)
-
 		if err != nil {
 			if !b.silent {
 				b.SendConsoleMessage("Error", fmt.Sprintf("failed to resolve x64 compiler path: %v", err))
-				return false
 			}
+			return false
 		}
 		b.compilerOptions.Config.Compiler64 = abs
 
-		CompileCommand += "\"" + b.compilerOptions.Config.Compiler64 + "\" "
+		CompileCommand += "\"" + b.compilerOptions.Config.Compiler64 + "\" -m64 "
 	} else {
 		abs, err := filepath.Abs(b.compilerOptions.Config.Compiler86)
-
 		if err != nil {
 			if !b.silent {
 				b.SendConsoleMessage("Error", fmt.Sprintf("failed to resolve x86 compiler path: %v", err))
-				return false
 			}
+			return false
 		}
 		b.compilerOptions.Config.Compiler86 = abs
 
-		CompileCommand += "\"" + b.compilerOptions.Config.Compiler86 + "\" "
+		CompileCommand += "\"" + b.compilerOptions.Config.Compiler86 + "\" -m32 "
 	}
 
 	// add sources
@@ -313,6 +313,10 @@ func (b *Builder) Build() bool {
 		files, err := os.ReadDir(b.sourcePath + "/" + dir)
 		if err != nil {
 			logger.Error(err)
+			if !b.silent {
+				b.SendConsoleMessage("Error", fmt.Sprintf("failed to read source directory %s: %v", dir, err))
+			}
+			return false
 		}
 
 		for _, f := range files {
@@ -322,21 +326,34 @@ func (b *Builder) Build() bool {
 			if path.Ext(f.Name()) == ".asm" {
 				if (strings.Contains(f.Name(), ".x64.") && b.config.Arch == ARCHITECTURE_X64) || (strings.Contains(f.Name(), ".x86.") && b.config.Arch == ARCHITECTURE_X86) {
 					AsmObj = b.CompileDir + utils.GenerateID(10) + ".o"
-					var AsmCompile string
+					var asmFormat string
 					if b.config.Arch == ARCHITECTURE_X64 {
-						AsmCompile = fmt.Sprintf(b.compilerOptions.Config.Nasm+" -f win64 %s -o %s", FilePath, AsmObj)
+						asmFormat = "win64"
 					} else {
-						AsmCompile = fmt.Sprintf(b.compilerOptions.Config.Nasm+" -f win32 %s -o %s", FilePath, AsmObj)
+						asmFormat = "win32"
 					}
-					logger.Debug(AsmCompile)
+					// Use CmdArgs for safer command execution (prevents shell injection)
+					logger.Debug(fmt.Sprintf("%s -f %s %s -o %s", b.compilerOptions.Config.Nasm, asmFormat, FilePath, AsmObj))
 					b.FilesCreated = append(b.FilesCreated, AsmObj)
-					b.Cmd(AsmCompile)
+					if !b.CmdArgs(b.compilerOptions.Config.Nasm, "-f", asmFormat, FilePath, "-o", AsmObj) {
+						return false
+					}
 					CompileCommand += AsmObj + " "
 				}
 			} else if path.Ext(f.Name()) == ".c" {
 				CompileCommand += FilePath + " "
 			}
 		}
+	}
+
+	// validate main source file exists
+	mainSourceFile := b.sourcePath + "/src/Demon.c"
+	if _, err := os.Stat(mainSourceFile); os.IsNotExist(err) {
+		if !b.silent {
+			b.SendConsoleMessage("Error", "main source file not found: src/Demon.c")
+		}
+		logger.Error("main source file not found: " + mainSourceFile)
+		return false
 	}
 	CompileCommand += "src/Demon.c "
 
@@ -426,6 +443,19 @@ func (b *Builder) Build() bool {
 				ShellcodePath = utils.GetTeamserverPath() + "/" + PayloadDir + "/Shellcode.x86.bin"
 			}
 
+			// Validate shellcode binary exists and has content
+			shellcodeInfo, err := os.Stat(ShellcodePath)
+			if err != nil {
+				logger.Error("Shellcode binary not found: " + ShellcodePath)
+				b.SendConsoleMessage("Error", "shellcode binary not found: "+ShellcodePath)
+				return false
+			}
+			if shellcodeInfo.Size() == 0 {
+				logger.Error("Shellcode binary is empty: " + ShellcodePath)
+				b.SendConsoleMessage("Error", "shellcode binary is empty: "+ShellcodePath)
+				return false
+			}
+
 			ShellcodeTemplate, err := os.ReadFile(ShellcodePath)
 			if err != nil {
 				logger.Error("Couldn't read content of file: " + err.Error())
@@ -452,6 +482,18 @@ func (b *Builder) Build() bool {
 
 	//logger.Debug(CompileCommand)
 	Successful := b.CompileCmd(CompileCommand)
+
+	if Successful {
+		// validate output file exists and has content
+		info, err := os.Stat(b.outputPath)
+		if err != nil || info.Size() == 0 || !info.Mode().IsRegular() {
+			if !b.silent {
+				b.SendConsoleMessage("Error", "compilation produced empty or invalid output file")
+			}
+			logger.Error("compilation produced empty or invalid output file: " + b.outputPath)
+			return false
+		}
+	}
 
 	return Successful
 }
@@ -510,7 +552,7 @@ func (b *Builder) GetOutputPath() string {
 	return b.outputPath
 }
 
-func (b *Builder) Patch(ByteArray []byte) []byte {
+func (b *Builder) Patch(ByteArray []byte) ([]byte, error) {
 	if b.config.Arch == ARCHITECTURE_X64 {
 		if b.ProfileConfig.MagicMzX64 != "" {
 			for i := range b.ProfileConfig.MagicMzX64 {
@@ -526,7 +568,7 @@ func (b *Builder) Patch(ByteArray []byte) []byte {
 					new = append(new, bytes.Repeat([]byte{0}, len(old)-len(new))...)
 				}
 				if len(new) > len(old) {
-					logger.Error(fmt.Sprintf("invalid replacement rule, new value (%s) can be longer than the old value (%s)", string(new), old))
+					return nil, fmt.Errorf("invalid replacement rule, new value (%s) cannot be longer than the old value (%s)", string(new), old)
 				} else {
 					ByteArray = bytes.Replace(ByteArray, []byte(old), new, -1)
 				}
@@ -547,7 +589,7 @@ func (b *Builder) Patch(ByteArray []byte) []byte {
 					new = append(new, bytes.Repeat([]byte{0}, len(old)-len(new))...)
 				}
 				if len(new) > len(old) {
-					logger.Error(fmt.Sprintf("invalid replacement rule, new value (%s) can be longer than the old value (%s)", string(new), old))
+					return nil, fmt.Errorf("invalid replacement rule, new value (%s) cannot be longer than the old value (%s)", string(new), old)
 				} else {
 					ByteArray = bytes.Replace(ByteArray, []byte(old), new, -1)
 				}
@@ -555,7 +597,7 @@ func (b *Builder) Patch(ByteArray []byte) []byte {
 		}
 	}
 
-	return ByteArray
+	return ByteArray, nil
 }
 
 func (b *Builder) PatchConfig() ([]byte, error) {
@@ -616,9 +658,19 @@ func (b *Builder) PatchConfig() ([]byte, error) {
 	if b.FileType == FILETYPE_WINDOWS_SERVICE_EXE {
 		if val, ok := b.config.Config["Service Name"].(string); ok {
 			if len(val) > 0 {
-				b.compilerOptions.Defines = append(b.compilerOptions.Defines, "SERVICE_NAME=\\\""+val+"\\\"")
+				// Sanitize service name: only allow alphanumeric and underscore
+				sanitized := regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(val, "")
+				if sanitized != val {
+					if !b.silent {
+						b.SendConsoleMessage("Warning", "service name sanitized from '"+val+"' to '"+sanitized+"'")
+					}
+				}
+				if len(sanitized) == 0 {
+					sanitized = common.RandomString(6)
+				}
+				b.compilerOptions.Defines = append(b.compilerOptions.Defines, "SERVICE_NAME=\\\""+sanitized+"\\\"")
 				if !b.silent {
-					b.SendConsoleMessage("Info", "set service name to "+val)
+					b.SendConsoleMessage("Info", "set service name to "+sanitized)
 				}
 			} else {
 				val = common.RandomString(6)
@@ -1051,7 +1103,15 @@ func (b *Builder) GetPayloadBytes() []byte {
 	}
 
 	if b.PatchBinary {
-		FileBuffer = b.Patch(FileBuffer)
+		var patchErr error
+		FileBuffer, patchErr = b.Patch(FileBuffer)
+		if patchErr != nil {
+			logger.Error("Failed to patch binary: " + patchErr.Error())
+			if !b.silent {
+				b.SendConsoleMessage("Error", "failed to patch binary: "+patchErr.Error())
+			}
+			return nil
+		}
 	}
 
 	if !b.silent {
@@ -1059,6 +1119,32 @@ func (b *Builder) GetPayloadBytes() []byte {
 	}
 
 	return FileBuffer
+}
+
+// CmdArgs executes a command with explicit arguments (safer than shell execution)
+func (b *Builder) CmdArgs(name string, args ...string) bool {
+	var (
+		Command = exec.Command(name, args...)
+		stdout  bytes.Buffer
+		stderr  bytes.Buffer
+		err     error
+	)
+
+	Command.Dir = b.sourcePath
+	Command.Stdout = &stdout
+	Command.Stderr = &stderr
+
+	err = Command.Run()
+	if err != nil {
+		logger.Error("Couldn't execute command: " + err.Error())
+		if !b.silent {
+			b.SendConsoleMessage("Error", "couldn't execute command: "+err.Error())
+			b.SendConsoleMessage("Error", "output: "+stderr.String())
+		}
+		return false
+	}
+
+	return true
 }
 
 func (b *Builder) Cmd(cmd string) bool {
@@ -1121,12 +1207,17 @@ func (b *Builder) GetListenerDefines() []string {
 
 func (b *Builder) DeletePayload() {
 	b.FilesCreated = append(b.FilesCreated, b.outputPath)
-	b.FilesCreated = append(b.FilesCreated, b.CompileDir)
 	for _, FileCreated := range b.FilesCreated {
 		if strings.HasSuffix(FileCreated, ".bin") == false {
 			if err := os.Remove(FileCreated); err != nil {
 				logger.Debug("Couldn't remove " + FileCreated + ": " + err.Error())
 			}
+		}
+	}
+	// Clean up compile directory with all contents
+	if b.CompileDir != "" {
+		if err := os.RemoveAll(b.CompileDir); err != nil {
+			logger.Debug("Couldn't remove compile directory " + b.CompileDir + ": " + err.Error())
 		}
 	}
 }

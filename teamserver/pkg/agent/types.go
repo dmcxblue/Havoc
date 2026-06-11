@@ -27,8 +27,15 @@ type Header struct {
 	Size       int
 	MagicValue int
 	AgentID    int
+	Version    int  // Protocol version for compatibility checking
 	Data       *parser.Parser
 }
+
+// Protocol version constants
+const (
+	PROTOCOL_VERSION_1 = 1  // Initial version
+	PROTOCOL_VERSION_CURRENT = PROTOCOL_VERSION_1
+)
 
 type ServiceAgentInterface interface {
 	SendResponse(AgentInfo any, Header Header) []byte
@@ -137,12 +144,14 @@ type SocksServer struct {
 
 // TODO: maybe change this to type map[string]any instead of struct
 type Agent struct {
-	NameID     string
-	JobQueue   []Job
-	Tasks      []Job
-	SessionDir string
-	Active     bool
-	Reason     string
+	NameID       string
+	JobQueue     []Job
+	JobQueueMtx  sync.Mutex
+	Tasks        []Job
+	TasksMtx     sync.Mutex
+	SessionDir   string
+	Active       bool
+	Reason       string
 
 	BofCallbacks []*BofCallback
 
@@ -152,9 +161,10 @@ type Agent struct {
 	/* TODO: make a map called "Optional" where to put demon/3rd party
 	 * 		 specific data (either use type "any" or map lets see).
 	 * 		 to avoid having some unnecessary data for 3rd party agent */
-	Downloads   []*Download
-	PortFwds    []*PortFwd
-	PortFwdsMtx sync.Mutex
+	Downloads    []*Download
+	DownloadsMtx sync.Mutex
+	PortFwds     []*PortFwd
+	PortFwdsMtx  sync.Mutex
 	SocksCli    []*SocksClient
 	SocksCliMtx sync.Mutex
 	SocksSvr    []*SocksServer

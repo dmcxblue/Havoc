@@ -118,10 +118,15 @@ bool ScriptManager::AddScript( QString Path )
 
     if ( Script != nullptr ) {
         if ( ! Script.isEmpty() ) {
+            PyGILState_STATE gstate = PyGILState_Ensure();
             Return = PyRun_SimpleStringFlags( Script.toStdString().c_str(), NULL );
             if ( Return == -1 ) {
+                PyErr_Print();
                 spdlog::error( "Failed to run script: {}", path );
-            } else {
+            }
+            PyGILState_Release( gstate );
+
+            if ( Return != -1 ) {
                 return true;
             }
         }
@@ -194,18 +199,45 @@ void ScriptManager::menu_ScriptMenu( const QPoint &pos ) const
 
 void ScriptManager::ReloadScript() const
 {
-    auto Path = tableLoadedScripts->item( tableLoadedScripts->currentRow(), 0 )->text();
+    auto row = tableLoadedScripts->currentRow();
+    if ( row < 0 )
+        return;
+
+    auto item = tableLoadedScripts->item( row, 0 );
+    if ( !item )
+        return;
+
+    auto Path = item->text();
 
     // Just rerun the script
     AddScript( Path );
 }
 
-// TODO: clear python interpreter and reload every script except the one that got removed
+// Clear Python objects defined by the removed script
+// Note: Full namespace cleanup requires tracking per-script namespaces
 void ScriptManager::RemoveScript() const
 {
-    auto Path = tableLoadedScripts->item( tableLoadedScripts->currentRow(), 0 )->text();
+    auto row = tableLoadedScripts->currentRow();
+    if ( row < 0 )
+        return;
 
-    tableLoadedScripts->removeRow( tableLoadedScripts->currentRow() );
+    auto item = tableLoadedScripts->item( row, 0 );
+    if ( !item )
+        return;
 
-    HavocX::Teamserver.TabSession->dbManager->RemoveScript( Path );
+    auto Path = item->text();
+
+    // Clear any Python errors before cleanup
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    if ( PyErr_Occurred() ) {
+        PyErr_Clear();
+    }
+    // Run garbage collection to free script resources
+    PyRun_SimpleString( "import gc; gc.collect()" );
+    PyGILState_Release( gstate );
+
+    tableLoadedScripts->removeRow( row );
+
+    if ( HavocX::Teamserver.TabSession && HavocX::Teamserver.TabSession->dbManager )
+        HavocX::Teamserver.TabSession->dbManager->RemoveScript( Path );
 }

@@ -28,6 +28,8 @@
 #define WIN_VERSION_10      10
 #define WIN_VERSION_2016_X  11
 
+/* Gadget search configuration - these fixed values may be detectable by security tools.
+ * Consider runtime randomization of search offsets in production builds. */
 #define LDR_GADGET_MODULE_SIZE ( 0x1000 * 0x1000 )
 #define LDR_GADGET_HEADER_SIZE ( 0x1000 )
 

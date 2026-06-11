@@ -575,7 +575,7 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
                 return false;
             }
 
-            if ( InputCommands[ 1 ].at( 0 ) == '-' )
+            if ( !InputCommands[ 1 ].isEmpty() && InputCommands[ 1 ].at( 0 ) == '-' )
             {
                 CONSOLE_ERROR( "\"sleep\" doesn't support negative delays" );
                 return false;
@@ -1309,16 +1309,18 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
             if (InputCommands[1].compare("dump-text") == 0)
             {
                 QFile filecontent("/tmp/TextEdit-dump.txt");
-                filecontent.open(QFile::Append | QFile::Text);
-                filecontent.write(DemonConsole->Console->toPlainText().toStdString().c_str());
-                filecontent.close();
+                if (filecontent.open(QFile::Append | QFile::Text)) {
+                    filecontent.write(DemonConsole->Console->toPlainText().toStdString().c_str());
+                    filecontent.close();
+                }
             }
             else if (InputCommands[1].compare("dump-html") == 0)
             {
                 QFile filecontent("/tmp/TextEdit-dump-html.html");
-                filecontent.open(QFile::Append | QFile::Text);
-                filecontent.write(DemonConsole->Console->toHtml().toStdString().c_str());
-                filecontent.close();
+                if (filecontent.open(QFile::Append | QFile::Text)) {
+                    filecontent.write(DemonConsole->Console->toHtml().toStdString().c_str());
+                    filecontent.close();
+                }
             }
         }
         else if ( InputCommands[ 0 ].compare( "token" ) == 0 )

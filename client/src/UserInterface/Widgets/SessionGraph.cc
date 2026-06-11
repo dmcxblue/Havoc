@@ -85,23 +85,42 @@ Node* GraphWidget::GraphNodeAdd( SessionItem Session )
 
 void GraphWidget::GraphNodeRemove( SessionItem Session )
 {
-    for ( int i = 0; i < NodeList.size(); i++ )
+    if ( NodeList.empty() ) {
+        return;
+    }
+
+    for ( int i = 0; i < static_cast<int>( NodeList.size() ); i++ )
     {
+        if ( i >= static_cast<int>( NodeList.size() ) ) {
+            break;
+        }
+
+        if ( NodeList[ i ] == nullptr ) {
+            continue;
+        }
+
         if ( Session.Name.compare( NodeList[ i ]->Name ) == 0 )
         {
             auto member = NodeList[ i ];
 
-            GraphScene->removeItem( member->Node->NodeEdge );
-            GraphScene->removeItem( member->Node );
+            if ( member->Node )
+            {
+                if ( member->Node->NodeEdge )
+                {
+                    GraphScene->removeItem( member->Node->NodeEdge );
+                }
+                GraphScene->removeItem( member->Node );
 
-            // Remove from parent's children list before erasing from NodeList
-            if ( member->Node->Parent )
-                member->Node->Parent->removeChild( member->Node );
+                if ( member->Node->Parent )
+                {
+                    member->Node->Parent->removeChild( member->Node );
+                }
+
+                delete member->Node->NodeEdge;
+                delete member->Node;
+            }
 
             NodeList.erase( NodeList.begin() + i );
-
-            delete member->Node->NodeEdge;
-            delete member->Node;
             delete member;
 
             return;

@@ -13,14 +13,13 @@ auto FileRead( const QString& FilePath ) -> QByteArray
         }
     }
 
-    // Open File
     auto File = QFile( FilePath );
-    File.open( QIODevice::ReadOnly );
+    if ( !File.open( QIODevice::ReadOnly ) ) {
+        spdlog::error( "Failed to open file: {}", path );
+        return nullptr;
+    }
 
-    // Read everything into our byte array buffer
     Content = File.readAll();
-
-    // close file
     File.close();
 
     return Content;

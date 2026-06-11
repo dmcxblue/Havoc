@@ -93,12 +93,13 @@ PyObject* PythonAPI::HavocUI::Core::MessageBox(PyObject *self, PyObject *args)
     QFile messageBoxStyleSheets(":/stylesheets/MessageBox");
     QMessageBox messageBox;
 
-    messageBoxStyleSheets.open(QIODevice::ReadOnly);
+    if (messageBoxStyleSheets.open(QIODevice::ReadOnly)) {
+        messageBox.setStyleSheet(messageBoxStyleSheets.readAll());
+    }
 
     messageBox.setWindowTitle(title);
     messageBox.setText(content);
     messageBox.setIcon(QMessageBox::Information);
-    messageBox.setStyleSheet(messageBoxStyleSheets.readAll());
 
     messageBox.exec();
 

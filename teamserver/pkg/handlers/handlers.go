@@ -69,6 +69,10 @@ func handleDemonAgent(Teamserver agent.TeamServer, Header agent.Header, External
 
 		/* get our agent instance based on the agent id */
 		Agent = Teamserver.AgentInstance(Header.AgentID)
+		if Agent == nil {
+			logger.Error(fmt.Sprintf("Agent %x exists but instance is nil", Header.AgentID))
+			return Response, false
+		}
 		Agent.UpdateLastCallback(Teamserver)
 
 		// while we can read a command and request id, parse new packages

