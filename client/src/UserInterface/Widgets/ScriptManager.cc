@@ -7,8 +7,6 @@
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QTableWidgetItem>
-#include <QDir>
-#include <QFileInfo>
 
 using namespace HavocNamespace::UserInterface::Widgets;
 
@@ -117,13 +115,6 @@ bool ScriptManager::AddScript( QString Path )
     int  Return = 0;
 
     HavocX::Teamserver.LoadingScript = Path.toStdString();
-
-    // Resolve the script's directory so relative asset paths (e.g. the BOF
-    // ObjectFiles/*.o referenced by InlineExecute) load correctly when the
-    // registered commands run later, regardless of where the client was started.
-    auto ScriptDir = QFileInfo( Path ).absolutePath();
-    if ( ! ScriptDir.isEmpty() )
-        QDir::setCurrent( ScriptDir );
 
     if ( Script != nullptr ) {
         if ( ! Script.isEmpty() ) {

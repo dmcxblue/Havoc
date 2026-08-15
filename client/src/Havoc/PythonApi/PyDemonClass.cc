@@ -6,7 +6,12 @@
 #include <Havoc/PythonApi/PythonApi.h>
 #include <Havoc/PythonApi/PyDemonClass.h>
 #include <UserInterface/Widgets/DemonInteracted.h>
+#include <UserInterface/Widgets/TeamserverTabSession.h>
+#include <Havoc/DBManager/DBManager.hpp>
 #include <Util/ColorText.h>
+
+#include <QDir>
+#include <QFileInfo>
 
 PyMemberDef PyDemonClass_members[] = {
 
@@ -196,6 +201,29 @@ PyObject* DemonClass_Shell( PPyDemonClass self, PyObject *args )
     Py_RETURN_NONE;
 }
 
+// Resolve a (possibly relative) asset path such as a BOF "ObjectFiles/foo.o".
+// Module scripts reference these relative to their own directory, but the
+// client's working directory is the repo root (where the module scripts are
+// loaded from). If the path is not found as-is, try resolving it against each
+// loaded script's directory so modules work regardless of the client's CWD.
+static QString ResolveScriptAssetPath( const QString& Path )
+{
+    if ( QFileInfo::exists( Path ) )
+        return Path;
+
+    if ( HavocX::Teamserver.TabSession && HavocX::Teamserver.TabSession->dbManager )
+    {
+        for ( auto& ScriptPath : HavocX::Teamserver.TabSession->dbManager->GetScripts() )
+        {
+            auto Resolved = QDir( QFileInfo( ScriptPath ).absolutePath() ).filePath( Path );
+            if ( QFileInfo::exists( Resolved ) )
+                return Resolved;
+        }
+    }
+
+    return Path;
+}
+
 // Demon.InlineExecute( TaskID: str, EntryFunc: str, Path: str, Args: str, Threaded: bool )
 PyObject* DemonClass_InlineExecute( PPyDemonClass self, PyObject *args )
 {
@@ -222,11 +250,13 @@ PyObject* DemonClass_InlineExecute( PPyDemonClass self, PyObject *args )
         spdlog::debug( "execute object file in non-threaded" );
     }
 
+    auto ResolvedPath = ResolveScriptAssetPath( QString( Path ) );
+
     for ( auto& Sessions : HavocX::Teamserver.Sessions )
     {
         if ( Sessions.Name.compare( self->DemonID ) == 0 )
         {
-            if ( FileRead( Path ) == nullptr )
+            if ( FileRead( ResolvedPath ) == nullptr )
             {
                 Sessions.InteractedWidget->AppendRaw();
                 Sessions.InteractedWidget->TaskError( "Failed to open object file path: " + QString( Path ) );
@@ -237,7 +267,7 @@ PyObject* DemonClass_InlineExecute( PPyDemonClass self, PyObject *args )
                 auto ObjArgs       = PyBytes_AS_STRING( PyArgBytes );
                 auto ArgsByteArray = QByteArray( ObjArgs, ArgSize );
 
-                Sessions.InteractedWidget->DemonCommands->Execute.InlineExecute( ( char* ) TaskID, ( char* ) EntryFunc, ( char* ) Path, ArgsByteArray, Flags );
+                Sessions.InteractedWidget->DemonCommands->Execute.InlineExecute( TaskID, EntryFunc, ResolvedPath, ArgsByteArray, Flags );
             }
 
             break;
@@ -274,11 +304,13 @@ PyObject* DemonClass_InlineExecuteGetOutput( PPyDemonClass self, PyObject *args 
         return nullptr;
     }
 
+    auto ResolvedPath = ResolveScriptAssetPath( QString( Path ) );
+
     for ( auto& Sessions : HavocX::Teamserver.Sessions )
     {
         if ( Sessions.Name.compare( self->DemonID ) == 0 )
         {
-            if ( FileRead( Path ) == nullptr )
+            if ( FileRead( ResolvedPath ) == nullptr )
             {
                 Sessions.InteractedWidget->AppendRaw();
                 Sessions.InteractedWidget->TaskError( "Failed to open object file path: " + QString( Path ) );
@@ -296,7 +328,7 @@ PyObject* DemonClass_InlineExecuteGetOutput( PPyDemonClass self, PyObject *args 
                 Sessions.TaskIDToPythonCallbacks.insert(pair<QString, PyObject*>(TaskID, Callback));
                 Py_XINCREF(Callback);
 
-                Sessions.InteractedWidget->DemonCommands->Execute.InlineExecuteGetOutput( ( char* ) TaskID.toStdString().c_str(), ( char* ) EntryFunc, ( char* ) Path, ArgsByteArray, Flags );
+                Sessions.InteractedWidget->DemonCommands->Execute.InlineExecuteGetOutput( TaskID, EntryFunc, ResolvedPath, ArgsByteArray, Flags );
 
                 return PyUnicode_FromString( TaskID.toStdString().c_str() );
             }
