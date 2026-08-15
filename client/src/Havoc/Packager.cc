@@ -19,6 +19,8 @@
 #include <QByteArray>
 #include <QJsonArray>
 #include <QDir>
+#include <QFileInfo>
+#include <QCoreApplication>
 
 const int Util::Packager::InitConnection::Type      = 0x1;
 const int Util::Packager::InitConnection::Success   = 0x1;
@@ -179,8 +181,28 @@ bool Packager::DispatchInitConnection( Util::Packager::PPackage Package )
                 const auto  scripts = toml::find( HavocApplication->Config, "scripts" );
                 const auto& files   = toml::find<std::vector<std::string>>( scripts, "files" );
 
+                // Resolve script paths against several bases so the config works
+                // regardless of the client's working directory. Order: as-is
+                // (absolute or CWD-relative), then the binary's directory, then
+                // its parent (the repo root when the binary sits at client/Havoc).
+                auto AppDir    = QCoreApplication::applicationDirPath();
+                auto ParentDir = QDir( AppDir ).absoluteFilePath( ".." );
+
                 for ( const auto& file : files ) {
-                    ScriptManager::AddScript( file.c_str() );
+                    auto Entry = QString::fromStdString( file );
+                    QString Resolved;
+
+                    if ( QFileInfo::exists( Entry ) ) {
+                        Resolved = Entry;
+                    } else if ( QFileInfo::exists( QDir( AppDir ).filePath( Entry ) ) ) {
+                        Resolved = QDir( AppDir ).filePath( Entry );
+                    } else if ( QFileInfo::exists( QDir( ParentDir ).filePath( Entry ) ) ) {
+                        Resolved = QDir( ParentDir ).filePath( Entry );
+                    } else {
+                        Resolved = Entry;
+                    }
+
+                    ScriptManager::AddScript( Resolved );
                 }
 
                 HavocApplication->Start();

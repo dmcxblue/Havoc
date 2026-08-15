@@ -3,6 +3,9 @@
 #include <Havoc/CmdLine.hpp>
 
 #include <QTimer>
+#include <QFile>
+#include <QCoreApplication>
+#include <vector>
 
 HavocSpace::Havoc::Havoc( QMainWindow* w )
 {
@@ -45,13 +48,22 @@ void HavocSpace::Havoc::Init( int argc, char** argv )
     }
 
     if ( Path.empty() ) {
-        Path = "client/config.toml";
-    }
-
-    if ( ! QFile::exists( Path.c_str() ) ) {
-        Path = "config.toml";
-
-        if ( ! QFile::exists( Path.c_str() ) ) {
+        // Try likely locations in order so the client works regardless of CWD:
+        // CWD-relative (repo-root launch), binary-dir, and binary-parent-dir.
+        auto AppDir = QCoreApplication::applicationDirPath().toStdString();
+        std::vector<std::string> Candidates = {
+            "client/config.toml",
+            "config.toml",
+            AppDir + "/config.toml",
+            AppDir + "/../client/config.toml",
+        };
+        for ( const auto& c : Candidates ) {
+            if ( QFile::exists( c.c_str() ) ) {
+                Path = c;
+                break;
+            }
+        }
+        if ( Path.empty() ) {
             spdlog::error( "couldn't find config file" );
             Exit();
         }
