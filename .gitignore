@@ -36,10 +36,6 @@ data/
 # ignore client directories
 client/Modules/
 
-# Claude Code
-CLAUDE.md
-.claude/
-
 # OS files
 .DS_Store
 Thumbs.db
