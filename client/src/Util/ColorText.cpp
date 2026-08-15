@@ -39,7 +39,18 @@ void HavocNamespace::Util::ColorText::SetDraculaDark()
 
 void HavocNamespace::Util::ColorText::SetDraculaLight()
 {
-    // TODO: get white theme
+    HavocNamespace::Util::ColorText::Colors::Hex::Background    = "#f8f8f2";
+    HavocNamespace::Util::ColorText::Colors::Hex::Foreground    = "#282a36";
+    HavocNamespace::Util::ColorText::Colors::Hex::Comment       = "#6272a4";
+    HavocNamespace::Util::ColorText::Colors::Hex::CurrentLine   = "#e6e6e6";
+
+    HavocNamespace::Util::ColorText::Colors::Hex::Cyan          = "#0097a7";
+    HavocNamespace::Util::ColorText::Colors::Hex::Green         = "#2e7d32";
+    HavocNamespace::Util::ColorText::Colors::Hex::Orange        = "#e65100";
+    HavocNamespace::Util::ColorText::Colors::Hex::Pink          = "#c2185b";
+    HavocNamespace::Util::ColorText::Colors::Hex::Purple        = "#7b1fa2";
+    HavocNamespace::Util::ColorText::Colors::Hex::Red           = "#d32f2f";
+    HavocNamespace::Util::ColorText::Colors::Hex::Yellow        = "#f9a825";
 }
 
 QString HavocNamespace::Util::ColorText::Color(const QString& color, const QString &text)

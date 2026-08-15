@@ -249,11 +249,17 @@ func (t *Teamserver) Start() {
 				Methode:      listener.Methode,
 				HostRotation: listener.HostRotation,
 				BehindRedir:  t.Profile.Config.Demon.TrustXForwardedFor,
-				PortBind:     strconv.Itoa(listener.PortBind),
-				PortConn:     strconv.Itoa(listener.PortConn),
+				PortBind: strconv.Itoa(listener.PortBind),
+				PortConn: func() string {
+					if listener.PortConn == 0 {
+						return ""
+					}
+					return strconv.Itoa(listener.PortConn)
+				}(),
 				UserAgent:    listener.UserAgent,
 				Headers:      listener.Headers,
 				Uris:         listener.Uris,
+				UriPrefix:    listener.UriPrefix,
 				Secure:       listener.Secure,
 				HostHeader:   listener.HostHeader,
 				Proxy:        handlers.ProxyConfig{},
@@ -298,6 +304,45 @@ func (t *Teamserver) Start() {
 
 			if listener.Response != nil {
 				HandlerData.Response.Headers = listener.Response.Headers
+				if listener.Response.HavocId != nil {
+					HandlerData.Response.DataLocation = handlers.DataLocationConfig{
+						Location: listener.Response.HavocId.Location,
+						Name:     listener.Response.HavocId.Name,
+					}
+				}
+			}
+
+			if listener.HavocId != nil {
+				loc := strings.ToLower(listener.HavocId.Location)
+				if loc != "" && loc != "body" && listener.HavocId.Name == "" {
+					logger.Error("HavocId.Name is required when HavocId.Location is '" + loc + "' for listener '" + listener.Name + "'")
+					return
+				}
+				HandlerData.DataLocation = handlers.DataLocationConfig{
+					Location: listener.HavocId.Location,
+					Name:     listener.HavocId.Name,
+				}
+				if HandlerData.Response.DataLocation.Location == "" {
+					HandlerData.Response.DataLocation = handlers.DataLocationConfig{
+						Location: "body",
+						Name:     "",
+					}
+				}
+			}
+
+			// parse Magic value from Demon config (default 0xDEADBEEF)
+			HandlerData.MagicValue = agent.DEMON_MAGIC_VALUE
+			if t.Profile.Config.Demon.Magic != "" {
+				magic := t.Profile.Config.Demon.Magic
+				if strings.HasPrefix(magic, "0x") || strings.HasPrefix(magic, "0X") {
+					magic = magic[2:]
+				}
+				if val, err := strconv.ParseUint(magic, 16, 32); err == nil {
+					HandlerData.MagicValue = uint32(val)
+				} else {
+					logger.Error("Invalid Magic value '" + t.Profile.Config.Demon.Magic + "' — must be a hex value (e.g., 0xDEADBEEF)")
+					return
+				}
 			}
 
 			if err := t.ListenerStart(handlers.LISTENER_HTTP, HandlerData); err != nil {
@@ -408,6 +453,18 @@ func (t *Teamserver) Start() {
 				HandlerData.Uris = strings.Split(v, ", ")
 			}
 			HandlerData.BehindRedir = t.Profile.Config.Demon.TrustXForwardedFor
+			if v, ok := Data["UriPrefix"].(string); ok {
+				HandlerData.UriPrefix = v
+			}
+			if v, ok := Data["PortConn"].(string); ok {
+				HandlerData.PortConn = v
+			}
+			if v, ok := Data["Methode"].(string); ok {
+				HandlerData.Methode = v
+			}
+			if v, ok := Data["HostHeader"].(string); ok {
+				HandlerData.HostHeader = v
+			}
 
 			HandlerData.Secure = false
 			if v, ok := Data["Secure"].(string); ok && v == "true" {
@@ -427,6 +484,37 @@ func (t *Teamserver) Start() {
 						HandlerData.Response.Headers = append(HandlerData.Response.Headers, s.(string))
 					}
 
+				}
+			}
+
+			if v, ok := Data["DataLocation"].(string); ok && v != "" {
+				HandlerData.DataLocation.Location = v
+			}
+			if v, ok := Data["DataLocationName"].(string); ok {
+				HandlerData.DataLocation.Name = v
+			}
+			if v, ok := Data["ResponseDataLocation"].(string); ok && v != "" {
+				HandlerData.Response.DataLocation.Location = v
+			}
+			if v, ok := Data["ResponseDataLocationName"].(string); ok {
+				HandlerData.Response.DataLocation.Name = v
+			}
+			if HandlerData.Response.DataLocation.Location == "" {
+				HandlerData.Response.DataLocation = handlers.DataLocationConfig{
+					Location: "body",
+					Name:     "",
+				}
+			}
+
+			// restore Magic value from Demon config (default 0xDEADBEEF)
+			HandlerData.MagicValue = agent.DEMON_MAGIC_VALUE
+			if t.Profile.Config.Demon.Magic != "" {
+				magic := t.Profile.Config.Demon.Magic
+				if strings.HasPrefix(magic, "0x") || strings.HasPrefix(magic, "0X") {
+					magic = magic[2:]
+				}
+				if val, err := strconv.ParseUint(magic, 16, 32); err == nil {
+					HandlerData.MagicValue = uint32(val)
 				}
 			}
 
@@ -544,15 +632,19 @@ func (t *Teamserver) handleRequest(id string) {
 	_, NewClient, err := client.Connection.ReadMessage()
 
 	if err != nil {
-		if err != io.EOF {
-			logger.Error("Error reading 2:", err.Error())
-			if strings.Contains(err.Error(), "connection reset by peer") {
-				err := client.Connection.Close()
-				if err != nil {
-					logger.Error("Error while closing Client connection: " + err.Error())
-				}
-			}
+		// Connection errors during initial handshake are common and expected
+		errStr := err.Error()
+		isExpectedError := err == io.EOF ||
+			strings.Contains(errStr, "connection reset by peer") ||
+			strings.Contains(errStr, "broken pipe") ||
+			strings.Contains(errStr, "connection timed out") ||
+			strings.Contains(errStr, "use of closed network connection")
+
+		if !isExpectedError {
+			logger.Debug("Initial connection error: " + errStr)
 		}
+
+		_ = client.Connection.Close()
 		t.Clients.Delete(id)
 		return
 	}
@@ -594,7 +686,11 @@ func (t *Teamserver) handleRequest(id string) {
 		return
 	}
 	if !t.ClientAuthenticate(pk) {
-		logger.Error("Client [User: " + pk.Body.Info["User"].(string) + "] failed to Authenticate! (" + colors.Red(client.GlobalIP) + ")")
+		userName := "unknown"
+		if u, ok := pk.Body.Info["User"].(string); ok {
+			userName = u
+		}
+		logger.Error("Client [User: " + userName + "] failed to Authenticate! (" + colors.Red(client.GlobalIP) + ")")
 		err := t.SendEvent(id, events.Authenticated(false))
 		if err != nil {
 			logger.Error("client (" + colors.Red(id) + ") error while sending authenticate message: " + colors.Red(err))
@@ -633,21 +729,23 @@ func (t *Teamserver) handleRequest(id string) {
 		_, EventPackage, err := client.Connection.ReadMessage()
 
 		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
+			// Handle various disconnect scenarios gracefully
+			errStr := err.Error()
+			isExpectedDisconnect := websocket.IsCloseError(err, websocket.CloseAbnormalClosure, websocket.CloseGoingAway, websocket.CloseNormalClosure) ||
+				strings.Contains(errStr, "connection reset by peer") ||
+				strings.Contains(errStr, "broken pipe") ||
+				strings.Contains(errStr, "connection timed out") ||
+				strings.Contains(errStr, "use of closed network connection") ||
+				err == io.EOF
+
+			if isExpectedDisconnect {
 				logger.Warn("User <" + colors.Blue(client.Username) + "> " + colors.Red("Disconnected"))
-
-				t.EventAppend(events.ChatLog.UserDisconnected(client.Username))
-				t.RemoveClient(id)
-
-				return
 			} else {
-				logger.Error("Error reading :", err.Error())
+				logger.Debug("Connection error for user " + client.Username + ": " + errStr)
 			}
 
-			err := client.Connection.Close()
-			if err != nil {
-				logger.Error("Socket Error:", err.Error())
-			}
+			// Close connection silently - errors here are expected on broken connections
+			_ = client.Connection.Close()
 
 			t.EventAppend(events.ChatLog.UserDisconnected(client.Username))
 			t.RemoveClient(id)
@@ -671,6 +769,18 @@ func (t *Teamserver) SetProfile(path string) {
 		logger.SetStdOut(os.Stderr)
 		logger.Error("Profile error:", colors.Red(err))
 		os.Exit(1)
+	}
+
+	// Validate the Demon Magic value up front so a bad value fails loudly here
+	// instead of silently killing the teamserver after the DB/listeners start.
+	if t.Profile.Config.Demon != nil && t.Profile.Config.Demon.Magic != "" {
+		magic := strings.TrimPrefix(strings.TrimPrefix(t.Profile.Config.Demon.Magic, "0x"), "0X")
+		if _, perr := strconv.ParseUint(magic, 16, 32); perr != nil {
+			logger.SetStdOut(os.Stderr)
+			logger.Error("Profile error: invalid Demon Magic value '" + colors.Red(t.Profile.Config.Demon.Magic) +
+				"'. Must be a 32-bit hex value with at most 8 hex digits (0-9, a-f), e.g. 0xDEADBEEF or 0xCAFEBABE.")
+			os.Exit(1)
+		}
 	}
 }
 
@@ -723,7 +833,11 @@ func (t *Teamserver) ClientAuthenticate(pk packager.Package) bool {
 		logger.Error("Not a Authenticate request")
 	}
 
-	logger.Error("Client failed to authenticate with password hash :: " + pk.Body.Info["Password"].(string))
+	passHash := "missing"
+	if p, ok := pk.Body.Info["Password"].(string); ok {
+		passHash = p
+	}
+	logger.Error("Client failed to authenticate with password hash :: " + passHash)
 	return false
 }
 
@@ -855,6 +969,11 @@ func (t *Teamserver) EventRemove(EventID int) []packager.Package {
 	t.EventsMutex.Lock()
 	defer t.EventsMutex.Unlock()
 
+	// bounds check to prevent index out of range panic
+	if EventID < 0 || EventID >= len(t.EventsList) {
+		return t.EventsList
+	}
+
 	t.EventsList = append(t.EventsList[:EventID], t.EventsList[EventID+1:]...)
 
 	return t.EventsList
@@ -875,8 +994,14 @@ func (t *Teamserver) SendAllPackagesToNewClient(ClientID string) {
 	}
 
 	// send all the agents that are alive right now to the new client
-	for _, demon := range t.Agents.Agents {
-		if demon.Active == false {
+	// Create a copy under lock to avoid race conditions
+	t.Agents.RLock()
+	agentsCopy := make([]*agent.Agent, len(t.Agents.Agents))
+	copy(agentsCopy, t.Agents.Agents)
+	t.Agents.RUnlock()
+
+	for _, demon := range agentsCopy {
+		if demon == nil || demon.Active == false {
 			continue
 		}
 

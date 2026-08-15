@@ -115,9 +115,22 @@ void HavocSpace::Havoc::Start()
 void HavocSpace::Havoc::Exit()
 {
     spdlog::critical( "Exit Program" );
+
+    // Disconnect WebSocket before closing to prevent thread issues
+    if ( HavocX::Connector != nullptr ) {
+        HavocX::Connector->Disconnect();
+    }
+
+    // Finalize Python interpreter to cleanup threads
+    if ( Py_IsInitialized() ) {
+        Py_Finalize();
+    }
+
+    // Close main window
     HavocApplication->HavocMainWindow->close();
 
-    exit( 0 );
+    // Quit application event loop gracefully instead of calling exit()
+    QApplication::quit();
 }
 
 Havoc::~Havoc()

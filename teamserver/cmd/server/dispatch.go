@@ -25,11 +25,12 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 		switch pk.Body.SubEvent {
 
 		case packager.Type.Session.MarkAsDead:
-			if AgentID, ok := pk.Body.Info["AgentID"]; ok {
+			if AgentID, ok := pk.Body.Info["AgentID"].(string); ok {
+				t.Agents.Lock()
 				for i := range t.Agents.Agents {
 					if t.Agents.Agents[i].NameID == AgentID {
 
-						if val, ok := pk.Body.Info["Marked"]; ok {
+						if val, ok := pk.Body.Info["Marked"].(string); ok {
 							if val == "Dead" {
 								t.Died(t.Agents.Agents[i])
 							} else if val == "Alive" {
@@ -39,8 +40,15 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 						}
 					}
 				}
+				t.Agents.Unlock()
 			}
 
+			break
+
+		case packager.Type.Session.Remove:
+			if AgentID, ok := pk.Body.Info["AgentID"].(string); ok {
+				t.AgentRemove(AgentID)
+			}
 			break
 
 		case packager.Type.Session.Input:
@@ -50,7 +58,6 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 				AgentType = "Demon"
 				err       error
 				DemonID   string
-				found     = false
 			)
 
 			if agentID, ok := pk.Body.Info["DemonID"].(string); ok {
@@ -60,271 +67,236 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 				return
 			}
 
-			for i := range t.Agents.Agents {
-
-				if t.Agents.Agents[i].NameID == DemonID {
-					found = true
-
-					// handle demon session input
-					// TODO: maybe move to own function ?
-					if t.Agents.Agents[i].Info.MagicValue == agent.DEMON_MAGIC_VALUE {
-
-						var (
-							Message = new(map[string]string)
-							Console = func(AgentID string, Message map[string]string) {
-								var (
-									out, _ = json.Marshal(Message)
-									pk     = events.Demons.DemonOutput(DemonID, agent.HAVOC_CONSOLE_MESSAGE, string(out))
-								)
-
-								t.EventAppend(pk)
-								t.EventBroadcast("", pk)
-							}
-						)
-
-						if val, ok := pk.Body.Info["CommandID"]; ok {
-
-							if pk.Body.Info["CommandID"] == "Python Plugin" {
-
-								// TODO: move to own function.
-								logr.LogrInstance.AddAgentInput("Demon", pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
-
-								if pk.Head.OneTime == "true" {
-									return
-								}
-
-								var backups = map[string]interface{}{
-									"TaskID":      pk.Body.Info["TaskID"].(string),
-									"DemonID":     DemonID,
-									"CommandID":   "",
-									"CommandLine": pk.Body.Info["CommandLine"].(string),
-									"AgentType":   AgentType,
-								}
-
-								if _, ok := pk.Body.Info["CommandID"].(string); ok {
-									backups["CommandID"] = pk.Body.Info["CommandID"]
-								}
-
-								if _, ok := pk.Body.Info["TaskMessage"].(string); ok {
-									backups["TaskMessage"] = pk.Body.Info["TaskMessage"]
-								}
-
-								for k := range pk.Body.Info {
-									delete(pk.Body.Info, k)
-								}
-
-								pk.Body.Info = backups
-
-								t.EventAppend(pk)
-								t.EventBroadcast(pk.Head.User, pk)
-
-								return
-
-							} else if pk.Body.Info["CommandID"] == "Teamserver" {
-
-								// TODO: move to own function.
-								logr.LogrInstance.AddAgentInput("Demon", pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
-
-								var Command = pk.Body.Info["Command"].(string)
-
-								if pk.Head.OneTime == "true" {
-									return
-								}
-
-								var backups = map[string]interface{}{
-									"TaskID":      pk.Body.Info["TaskID"].(string),
-									"DemonID":     DemonID,
-									"CommandID":   "",
-									"CommandLine": pk.Body.Info["CommandLine"].(string),
-									"AgentType":   AgentType,
-								}
-
-								if _, ok := pk.Body.Info["CommandID"].(string); ok {
-									backups["CommandID"] = pk.Body.Info["CommandID"]
-								}
-
-								for k := range pk.Body.Info {
-									delete(pk.Body.Info, k)
-								}
-
-								pk.Body.Info = backups
-
-								t.EventAppend(pk)
-								t.EventBroadcast(pk.Head.User, pk)
-
-								if err = t.Agents.Agents[i].TeamserverTaskPrepare(Command, Console); err != nil {
-									Console(t.Agents.Agents[i].NameID, map[string]string{
-										"Type":    "Error",
-										"Message": "Failed to create Task: " + err.Error(),
-									})
-									return
-								}
-
-								return
-
-							} else {
-
-								// TODO: move to own function.
-								command, err = strconv.Atoi(val.(string))
-								if err != nil {
-
-									logger.Error("Failed to convert CommandID to integer: " + err.Error())
-									command = 0
-
-								} else {
-									*Message = make(map[string]string)
-
-									var ClientID string
-									ClientID = ""
-									t.Clients.Range(func(key, value any) bool {
-										client := value.(*Client)
-										if client.Username == pk.Head.User {
-											ClientID = client.ClientID
-											return false
-										}
-										return true
-									})
-
-									job, err = t.Agents.Agents[i].TaskPrepare(command, pk.Body.Info, Message, ClientID, t)
-									if err != nil {
-										Console(t.Agents.Agents[i].NameID, map[string]string{
-											"Type":    "Error",
-											"Message": "Failed to create Task: " + err.Error(),
-										})
-										return
-									}
-
-									if job != nil {
-										t.Agents.Agents[i].AddJobToQueue(*job)
-									}
-
-									if t.Agents.Agents[i].Pivots.Parent != nil {
-										logr.LogrInstance.AddAgentInput("Demon", t.Agents.Agents[i].NameID, pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
-
-									} else {
-										logr.LogrInstance.AddAgentInput("Demon", pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
-									}
-
-									if pk.Head.OneTime == "true" {
-										return
-									}
-
-									var backups = map[string]interface{}{
-										"TaskID":      pk.Body.Info["TaskID"].(string),
-										"DemonID":     DemonID,
-										"CommandID":   "",
-										"CommandLine": pk.Body.Info["CommandLine"].(string),
-										"AgentType":   AgentType,
-									}
-
-									if _, ok := pk.Body.Info["CommandID"].(string); ok {
-										backups["CommandID"] = pk.Body.Info["CommandID"]
-									}
-
-									for k := range pk.Body.Info {
-										delete(pk.Body.Info, k)
-									}
-
-									pk.Body.Info = backups
-
-									t.EventAppend(pk)
-									t.EventBroadcast(pk.Head.User, pk)
-
-									if Message != nil {
-										Console(t.Agents.Agents[i].NameID, *Message)
-									}
-
-									return
-								}
-							}
-						}
-
-					} else {
-
-						for _, a := range t.Service.Agents {
-							if a.MagicValue == fmt.Sprintf("0x%x", t.Agents.Agents[i].Info.MagicValue) {
-
-								// Set agent type
-								AgentType = a.Name
-
-								if pk.Body.Info["CommandID"] == "Python Plugin" {
-									logr.LogrInstance.AddAgentInput(AgentType, pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
-
-									if pk.Head.OneTime == "true" {
-										return
-									}
-
-									var backups = map[string]interface{}{
-										"TaskID":      pk.Body.Info["TaskID"].(string),
-										"DemonID":     DemonID,
-										"CommandID":   "",
-										"CommandLine": pk.Body.Info["CommandLine"].(string),
-										"AgentType":   AgentType,
-									}
-
-									if _, ok := pk.Body.Info["CommandID"].(string); ok {
-										backups["CommandID"] = pk.Body.Info["CommandID"]
-									}
-
-									if _, ok := pk.Body.Info["TaskMessage"].(string); ok {
-										backups["TaskMessage"] = pk.Body.Info["TaskMessage"]
-									}
-
-									for k := range pk.Body.Info {
-										delete(pk.Body.Info, k)
-									}
-
-									pk.Body.Info = backups
-
-									t.EventAppend(pk)
-									t.EventBroadcast(pk.Head.User, pk)
-
-									return
-
-								} else {
-									// Send command to agent service
-									a.SendTask(pk.Body.Info, t.Agents.Agents[i].ToMap())
-
-									// log agent input
-									logr.LogrInstance.AddAgentInput(a.Name, pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
-								}
-
-							}
-						}
-					}
-					break
-				}
-			}
-
-			if found == false {
+			// Look up agent with mutex protection
+			targetAgent := t.AgentByNameID(DemonID)
+			if targetAgent == nil {
 				logger.Error(fmt.Sprintf("The AgentID %s was not found", DemonID))
 				return
 			}
 
-			if pk.Head.OneTime == "true" {
-				return
+			// handle demon session input
+			if targetAgent.Info.MagicValue == agent.DEMON_MAGIC_VALUE {
+
+				var (
+					Message = new(map[string]string)
+					Console = func(AgentID string, Message map[string]string) {
+						var (
+							out, _ = json.Marshal(Message)
+							pk     = events.Demons.DemonOutput(DemonID, agent.HAVOC_CONSOLE_MESSAGE, string(out))
+						)
+
+						t.EventAppend(pk)
+						t.EventBroadcast("", pk)
+					}
+				)
+
+				if val, ok := pk.Body.Info["CommandID"]; ok {
+
+					if pk.Body.Info["CommandID"] == "Python Plugin" {
+
+						logr.LogrInstance.AddAgentInput("Demon", pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
+
+						if pk.Head.OneTime == "true" {
+							return
+						}
+
+						var backups = map[string]interface{}{
+							"TaskID":      pk.Body.Info["TaskID"].(string),
+							"DemonID":     DemonID,
+							"CommandID":   "",
+							"CommandLine": pk.Body.Info["CommandLine"].(string),
+							"AgentType":   AgentType,
+						}
+
+						if _, ok := pk.Body.Info["CommandID"].(string); ok {
+							backups["CommandID"] = pk.Body.Info["CommandID"]
+						}
+
+						if _, ok := pk.Body.Info["TaskMessage"].(string); ok {
+							backups["TaskMessage"] = pk.Body.Info["TaskMessage"]
+						}
+
+						for k := range pk.Body.Info {
+							delete(pk.Body.Info, k)
+						}
+
+						pk.Body.Info = backups
+
+						t.EventAppend(pk)
+						t.EventBroadcast(pk.Head.User, pk)
+
+						return
+
+					} else if pk.Body.Info["CommandID"] == "Teamserver" {
+
+						logr.LogrInstance.AddAgentInput("Demon", pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
+
+						var Command = pk.Body.Info["Command"].(string)
+
+						if pk.Head.OneTime == "true" {
+							return
+						}
+
+						var backups = map[string]interface{}{
+							"TaskID":      pk.Body.Info["TaskID"].(string),
+							"DemonID":     DemonID,
+							"CommandID":   "",
+							"CommandLine": pk.Body.Info["CommandLine"].(string),
+							"AgentType":   AgentType,
+						}
+
+						if _, ok := pk.Body.Info["CommandID"].(string); ok {
+							backups["CommandID"] = pk.Body.Info["CommandID"]
+						}
+
+						for k := range pk.Body.Info {
+							delete(pk.Body.Info, k)
+						}
+
+						pk.Body.Info = backups
+
+						t.EventAppend(pk)
+						t.EventBroadcast(pk.Head.User, pk)
+
+						if err = targetAgent.TeamserverTaskPrepare(Command, Console); err != nil {
+							Console(targetAgent.NameID, map[string]string{
+								"Type":    "Error",
+								"Message": "Failed to create Task: " + err.Error(),
+							})
+							return
+						}
+
+						return
+
+					} else {
+
+						command, err = strconv.Atoi(val.(string))
+						if err != nil {
+
+							logger.Error("Failed to convert CommandID to integer: " + err.Error())
+							command = 0
+
+						} else {
+							*Message = make(map[string]string)
+
+							var ClientID string
+							ClientID = ""
+							t.Clients.Range(func(key, value any) bool {
+								client := value.(*Client)
+								if client.Username == pk.Head.User {
+									ClientID = client.ClientID
+									return false
+								}
+								return true
+							})
+
+							job, err = targetAgent.TaskPrepare(command, pk.Body.Info, Message, ClientID, t)
+							if err != nil {
+								Console(targetAgent.NameID, map[string]string{
+									"Type":    "Error",
+									"Message": "Failed to create Task: " + err.Error(),
+								})
+								return
+							}
+
+							if job != nil {
+								targetAgent.AddJobToQueue(*job)
+							}
+
+							if targetAgent.Pivots.Parent != nil {
+								logr.LogrInstance.AddAgentInput("Demon", targetAgent.NameID, pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
+
+							} else {
+								logr.LogrInstance.AddAgentInput("Demon", pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
+							}
+
+							if pk.Head.OneTime == "true" {
+								return
+							}
+
+							var backups = map[string]interface{}{
+								"TaskID":      pk.Body.Info["TaskID"].(string),
+								"DemonID":     DemonID,
+								"CommandID":   "",
+								"CommandLine": pk.Body.Info["CommandLine"].(string),
+								"AgentType":   AgentType,
+							}
+
+							if _, ok := pk.Body.Info["CommandID"].(string); ok {
+								backups["CommandID"] = pk.Body.Info["CommandID"]
+							}
+
+							for k := range pk.Body.Info {
+								delete(pk.Body.Info, k)
+							}
+
+							pk.Body.Info = backups
+
+							t.EventAppend(pk)
+							t.EventBroadcast(pk.Head.User, pk)
+
+							if Message != nil {
+								Console(targetAgent.NameID, *Message)
+							}
+
+							return
+						}
+					}
+				}
+
+			} else if t.Service != nil {
+
+				for _, a := range t.Service.Agents {
+					if a.MagicValue == fmt.Sprintf("0x%x", targetAgent.Info.MagicValue) {
+
+						// Set agent type
+						AgentType = a.Name
+
+						if pk.Body.Info["CommandID"] == "Python Plugin" {
+							logr.LogrInstance.AddAgentInput(AgentType, pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
+
+							if pk.Head.OneTime == "true" {
+								return
+							}
+
+							var backups = map[string]interface{}{
+								"TaskID":      pk.Body.Info["TaskID"].(string),
+								"DemonID":     DemonID,
+								"CommandID":   "",
+								"CommandLine": pk.Body.Info["CommandLine"].(string),
+								"AgentType":   AgentType,
+							}
+
+							if _, ok := pk.Body.Info["CommandID"].(string); ok {
+								backups["CommandID"] = pk.Body.Info["CommandID"]
+							}
+
+							if _, ok := pk.Body.Info["TaskMessage"].(string); ok {
+								backups["TaskMessage"] = pk.Body.Info["TaskMessage"]
+							}
+
+							for k := range pk.Body.Info {
+								delete(pk.Body.Info, k)
+							}
+
+							pk.Body.Info = backups
+
+							t.EventAppend(pk)
+							t.EventBroadcast(pk.Head.User, pk)
+
+							return
+
+						} else {
+							// Send command to agent service
+							a.SendTask(pk.Body.Info, targetAgent.ToMap())
+
+							// log agent input
+							logr.LogrInstance.AddAgentInput(a.Name, pk.Body.Info["DemonID"].(string), pk.Head.User, pk.Body.Info["TaskID"].(string), pk.Body.Info["CommandLine"].(string), time.Now().UTC().Format("02/01/2006 15:04:05"))
+						}
+
+					}
+				}
 			}
-
-			var backups = map[string]interface{}{
-				"TaskID":      pk.Body.Info["TaskID"].(string),
-				"DemonID":     DemonID,
-				"CommandID":   "",
-				"CommandLine": pk.Body.Info["CommandLine"].(string),
-				"AgentType":   AgentType,
-			}
-
-			if _, ok := pk.Body.Info["CommandID"].(string); ok {
-				backups["CommandID"] = pk.Body.Info["CommandID"]
-			}
-
-			for k := range pk.Body.Info {
-				delete(pk.Body.Info, k)
-			}
-
-			pk.Body.Info = backups
-
-			t.EventAppend(pk)
-			t.EventBroadcast(pk.Head.User, pk)
 		}
 
 	case packager.Type.Chat.Type:
@@ -350,7 +322,11 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 
 		case packager.Type.Listener.Add:
 
-			var Protocol = pk.Body.Info["Protocol"].(string)
+			Protocol, ok := pk.Body.Info["Protocol"].(string)
+			if !ok {
+				logger.Error("Protocol not specified or invalid type")
+				return
+			}
 
 			switch Protocol {
 
@@ -493,7 +469,7 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 					}
 				}
 
-				if pk.Body.Info["Secure"].(string) == "true" {
+				if val, ok := pk.Body.Info["Secure"].(string); ok && val == "true" {
 					Config.Secure = true
 				}
 
@@ -646,7 +622,11 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 
 		case packager.Type.Listener.Edit:
 
-			var Protocol = pk.Body.Info["Protocol"].(string)
+			Protocol, ok := pk.Body.Info["Protocol"].(string)
+			if !ok {
+				logger.Error("Protocol not specified or invalid type in Edit request")
+				return
+			}
 			switch Protocol {
 
 			case handlers.AGENT_HTTP, handlers.AGENT_HTTPS:
@@ -786,7 +766,7 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 					}
 				}
 
-				if pk.Body.Info["Secure"].(string) == "true" {
+				if val, ok := pk.Body.Info["Secure"].(string); ok && val == "true" {
 					Config.Secure = true
 				}
 
@@ -924,7 +904,7 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 						}
 					}
 				}()
-			} else {
+			} else if t.Service != nil {
 				// send to Services
 				for _, Agent := range t.Service.Agents {
 					if Agent.Name == AgentType {

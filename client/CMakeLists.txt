@@ -170,6 +170,7 @@ set( HAVOC_SOURCE
         src/Havoc/DBManger/DBManager.cc
         src/Havoc/DBManger/Teamserver.cc
         src/Havoc/DBManger/Scripts.cc
+        src/Havoc/DBManger/HiddenSessions.cc
 
         src/Havoc/Demon/ConsoleInput.cc
         src/Havoc/Demon/CommandSend.cc

@@ -244,11 +244,11 @@ namespace HavocNamespace
             u64     KillDate;
             u32     WorkingHours;
 
-            UserInterface::Widgets::DemonInteracted* InteractedWidget;
-            UserInterface::Widgets::ProcessList*     ProcessList;
-            class FileBrowser*                             FileBrowser;
+            UserInterface::Widgets::DemonInteracted* InteractedWidget = nullptr;
+            UserInterface::Widgets::ProcessList*     ProcessList = nullptr;
+            class FileBrowser*                       FileBrowser = nullptr;
 
-            std::map<QString, PyObject*> TaskIDToPythonCallbacks;
+            std::map<QString, PyObject*> TaskIDToPythonCallbacks = {};
 
             void Export();
             void Remove();
@@ -268,6 +268,7 @@ namespace HavocNamespace
             std::vector<RegisteredCommand> RegisteredCommands;
             std::vector<RegisteredModule>  RegisteredModules;
             std::vector<PyObject*>         RegisteredCallbacks;
+            std::vector<PyObject*>         OutputCallbacks;
             std::vector<ServiceAgent>      ServiceAgents;
 
             QStringList   AddedCommands;

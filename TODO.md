@@ -387,3 +387,97 @@ Generated from multi-agent audit on 2026-06-10. 58 findings across compilation, 
 - [x] Event broadcast lacks filtering - all events go to all clients (`teamserver/cmd/server/dispatch.go:81`) - **DEFERRED: Major architectural change**
 - [x] Agent update operations are not atomic (`teamserver/pkg/agent/agent.go`) - **DEFERRED: Major architectural change**
 - [x] Listener name collision not prevented (`teamserver/cmd/server/teamserver.go`) - **VERIFIED: Already implemented in ListenerStart() with "listener already exists" error**
+
+---
+
+## Phase 7: Configurable Data Location & Azure Functions Redirector (2026-07-10)
+
+**Priority:** Feature  
+**Complexity:** Medium  
+**Status:** Complete
+
+Implemented configurable payload metadata placement (body/header/cookie/query parameter) for HTTP listeners, enabling compatibility with Azure Functions and other redirectors that mangle HTTP request bodies.
+
+### Data Location Feature
+
+- [x] **Metadata extraction from configurable location** (`teamserver/pkg/handlers/http.go:91-120`) - **FIXED**
+  - `extractMetadata()` handles body/header/cookie/parameter extraction
+  - Uses `base64.StdEncoding` for header/cookie, `base64.URLEncoding.WithPadding(base64.NoPadding)` for parameter
+  - Matches Demon-side encoding: `Base64Encode` for header/cookie, `Base64UrlEncode` for parameter
+
+- [x] **Response metadata split for non-body locations** (`teamserver/pkg/handlers/http.go:122-156`) - **FIXED**
+  - `writeResponse()` splits first 12 bytes into configured response location
+  - Falls back to body mode for responses <= 12 bytes (registration, NOJOB)
+  - Response DataLocation defaults to body, NOT inherited from request
+
+- [x] **GET route registration for non-body Data Locations** (`teamserver/pkg/handlers/http.go:289-295`) - **FIXED**
+  - Registers `h.GinEngine.GET()` with `h.request` handler when DataLocation is non-body
+  - Body-mode keeps GET returning fake404
+
+- [x] **Demon-side metadata placement** (`payloads/Demon/src/core/TransportHttp.c:114-155`) - **FIXED**
+  - PARAM mode: `Base64UrlEncode` first 12 bytes, append `?Name=token` to URI
+  - HEADER mode: `Base64Encode`, add as custom header
+  - COOKIE mode: `Base64Encode`, add as `Cookie: Name=token`
+  - Advances `SendBuffer` past metadata so body contains only bulk payload
+
+- [x] **Builder serialization of DataLocation config** (`teamserver/pkg/common/builder/builder.go`) - **FIXED**
+  - Serializes DataReq/DataResp config into Demon config blob
+  - Prepends UriPrefix to URIs: `demonUri := Config.Config.UriPrefix + uri`
+  - Response DataLocation defaults to body (Location=0)
+
+### UriPrefix Support
+
+- [x] **Strip UriPrefix before URI validation** (`teamserver/pkg/handlers/http.go:237-241`) - **FIXED**
+  - Demon sends `/config/gp/cart/view.html`, teamserver validates against `/gp/cart/view.html`
+  - `strings.TrimPrefix(requestPath, h.Config.UriPrefix)` before URI matching
+  - Without this fix, every redirected request failed URI validation → fake404
+
+### DB Persistence for New Fields
+
+- [x] **Flatten nested structs before DB storage** (`teamserver/cmd/server/listener.go:267-276`) - **FIXED**
+  - `structs.Map()` creates nested maps for `DataLocation` and `Response` structs
+  - Flattened to top-level keys: `DataLocation`, `DataLocationName`, `ResponseDataLocation`, `ResponseDataLocationName`, `UriPrefix`, `PortConn`, `Methode`, `HostHeader`
+
+- [x] **Restore new fields from DB on teamserver restart** (`teamserver/cmd/server/teamserver.go`) - **FIXED**
+  - Added missing field restores for `UriPrefix`, `PortConn`, `Methode`, `HostHeader`
+  - Without this fix, listener config was lost after teamserver restart
+
+### Profile Fixes (Azure Functions Compatibility)
+
+- [x] **Remove `Accept-Encoding: gzip, deflate, br` from profile headers** (`profiles/amazon.yaotl`) - **FIXED**
+  - Root cause of commands/output not flowing after registration
+  - Azure Functions IIS/Kestrel layer sees `Accept-Encoding: gzip` and compresses larger responses
+  - Demon's WinHTTP doesn't have `WINHTTP_OPTION_DECOMPRESSION` enabled → receives compressed bytes it can't parse
+  - Registration (4-byte response) worked because it was below compression threshold
+  - Task responses (larger) got compressed → Demon couldn't parse → no command output
+
+- [x] **Change response Content-Type to `application/octet-stream`** (`profiles/amazon.yaotl`) - **FIXED**
+  - `Content-Type: text/html; charset=UTF-8` triggered content processing by intermediaries
+  - `application/octet-stream` tells intermediaries to treat response as raw binary
+
+- [x] **Remove unnecessary CORS/CloudFront response headers** (`profiles/amazon.yaotl`) - **FIXED**
+  - Removed `Access-Control-*`, `X-Cache`, `Via`, `X-Amz-Cf-Pop`, `x-amzn-waf-action`
+  - Cosmetic headers that added noise and potential intermediary interference through Azure Function chain
+
+### nginx Redirector Script Fixes
+
+- [x] **Switch from `certbot --nginx` to `certbot certonly --webroot`** (`Redirector/nginx-redirector.sh`) - **FIXED**
+  - `certbot --nginx` plugin overwrites nginx config, replacing `proxy_pass` with `try_files $uri $uri/ =404`
+  - `certbot certonly --webroot` only obtains the cert without touching nginx config
+
+- [x] **Add `gzip off;` in proxy location block** (`Redirector/nginx-redirector.sh`) - **FIXED**
+  - nginx global `gzip on;` compressed responses when `Content-Type: text/html` was set
+  - Azure Function stripped `Content-Encoding` header (it's a content header in .NET)
+  - Demon received compressed bytes without knowing → couldn't parse
+
+- [x] **Fix Host header forwarding** (`Redirector/nginx-redirector.sh`) - **FIXED**
+  - Changed `proxy_set_header Host $host;` to `proxy_set_header Host $server_name;`
+  - Sends the VPS domain name, not the Azure Function hostname
+
+- [x] **Remove `proxy_intercept_errors`** (`Redirector/nginx-redirector.sh`) - **FIXED**
+  - Was silently converting 502/503/504 errors to 200 + decoy page
+  - Hid SSH tunnel connectivity issues during debugging
+
+### Documentation
+
+- [x] **Created `Azure Functions setup.md`** - Full setup guide with architecture, working profile, code fixes, and troubleshooting

@@ -19,7 +19,7 @@ import (
 //
 //	Response byte.Buffer
 //	Success	 bool
-func parseAgentRequest(Teamserver agent.TeamServer, Body []byte, ExternalIP string) (bytes.Buffer, bool) {
+func parseAgentRequest(Teamserver agent.TeamServer, Body []byte, ExternalIP string, magicValue uint32) (bytes.Buffer, bool) {
 
 	var (
 		Header   agent.Header
@@ -38,7 +38,7 @@ func parseAgentRequest(Teamserver agent.TeamServer, Body []byte, ExternalIP stri
 	}
 
 	// handle this demon connection if the magic value matches
-	if Header.MagicValue == agent.DEMON_MAGIC_VALUE {
+	if uint32(Header.MagicValue) == magicValue {
 		return handleDemonAgent(Teamserver, Header, ExternalIP)
 	}
 
@@ -329,14 +329,16 @@ func handleServiceAgent(Teamserver agent.TeamServer, Header agent.Header, Extern
 	Agent = Teamserver.AgentInstance(Header.AgentID)
 	if Agent != nil {
 		AgentData = Agent.ToMap()
-	}
-	
-	// Update Callback time
-	if Teamserver.AgentExist(Header.AgentID) {
+		// Update Callback time
 		Agent.UpdateLastCallback(Teamserver)
 	}
 	
-	Task = Teamserver.ServiceAgent(Header.MagicValue).SendResponse(AgentData, Header)
+	if svcAgent := Teamserver.ServiceAgent(Header.MagicValue); svcAgent != nil {
+		Task = svcAgent.SendResponse(AgentData, Header)
+	} else {
+		logger.Error("ServiceAgent returned nil for MagicValue")
+		return Response, false
+	}
 	//logger.Debug("Response:\n", hex.Dump(Task))
 
 	_, err = Response.Write(Task)

@@ -172,8 +172,8 @@ bool Packager::DispatchInitConnection( Util::Packager::PPackage Package )
         {
             if ( HavocApplication->ClientInitConnect ) {
                 if ( ! HavocApplication->HavocAppUI.isVisible() ) {
-                    HavocApplication->HavocAppUI.setupUi( HavocApplication->HavocMainWindow );
                     HavocApplication->HavocAppUI.setDBManager( HavocApplication->dbManager );
+                    HavocApplication->HavocAppUI.setupUi( HavocApplication->HavocMainWindow );
                 }
 
                 const auto  scripts = toml::find( HavocApplication->Config, "scripts" );
@@ -210,6 +210,7 @@ bool Packager::DispatchInitConnection( Util::Packager::PPackage Package )
             }
 
             HavocX::Teamserver.DemonConfig = QJsonDocument::fromJson( Package->Body.Info[ "Demon" ].c_str() );
+            return true;
         }
 
         default:
@@ -555,8 +556,14 @@ bool Packager::DispatchGate( Util::Packager::PPackage Package )
                 {
                     if ( HavocX::callbackGate )
                     {
+                        PyGILState_STATE gilState = PyGILState_Ensure();
                         PyObject* pyByteArray= PyUnicode_DecodeFSDefault(Package->Body.Info[ "PayloadArray" ].c_str());
-                        PyObject_CallFunctionObjArgs(HavocX::callbackGate, pyByteArray, nullptr);
+                        PyObject* result = PyObject_CallFunctionObjArgs(HavocX::callbackGate, pyByteArray, nullptr);
+                        Py_XDECREF(result);
+                        Py_XDECREF(pyByteArray);
+                        Py_DECREF(HavocX::callbackGate);
+                        HavocX::callbackGate = nullptr;
+                        PyGILState_Release(gilState);
                     }
                     else
                     {
@@ -585,6 +592,12 @@ bool Packager::DispatchSession( Util::Packager::PPackage Package )
         case Util::Packager::Session::NewSession:
         {
             auto TeamserverTab = HavocX::Teamserver.TabSession;
+            if ( !TeamserverTab )
+            {
+                spdlog::error( "TabSession is null, cannot process new session" );
+                return false;
+            }
+
             auto MagicValue    = uint64_t( 0 );
             auto StringStream  = std::stringstream();
 
@@ -634,32 +647,45 @@ bool Packager::DispatchSession( Util::Packager::PPackage Package )
                 if ( session.Name.compare( Agent.Name ) == 0 )
                     return false;
 
-            TeamserverTab->SessionTableWidget->NewSessionItem( Agent );
-            TeamserverTab->LootWidget->AddSessionSection( Agent.Name );
+            if ( TeamserverTab->SessionTableWidget )
+                TeamserverTab->SessionTableWidget->NewSessionItem( Agent );
+
+            if ( TeamserverTab->LootWidget )
+                TeamserverTab->LootWidget->AddSessionSection( Agent.Name );
 
             auto Time    = Agent.First;
             auto Message = "[" + Util::ColorText::Cyan( "*" ) + "]" + " Initialized " + Util::ColorText::Cyan( Agent.Name ) + " :: " + Util::ColorText::Yellow( Agent.User + "@" + Agent.Internal ) + Util::ColorText::Cyan( " (" ) + Util::ColorText::Red( Agent.Computer ) + Util::ColorText::Cyan( ")" );
 
-            HavocX::Teamserver.TabSession->SmallAppWidgets->EventViewer->AppendText( Time, Message );
+            if ( TeamserverTab->SmallAppWidgets && TeamserverTab->SmallAppWidgets->EventViewer )
+                TeamserverTab->SmallAppWidgets->EventViewer->AppendText( Time, Message );
 
-            if ( Agent.Marked.compare( "Alive" ) == 0 )
+            if ( Agent.Marked.compare( "Alive" ) == 0 && !HavocX::Teamserver.RegisteredCallbacks.empty() )
             {
+                PyGILState_STATE gilState = PyGILState_Ensure();
+
                 for ( auto& Callback : HavocX::Teamserver.RegisteredCallbacks )
                 {
-                    if ( PyCallable_Check( Callback ) )
+                    if ( Callback && PyCallable_Check( Callback ) )
                     {
                         PyObject* arglist = Py_BuildValue( "s", Agent.Name.toStdString().c_str() );
-                        PyObject* Return  = PyObject_CallFunctionObjArgs( Callback, arglist, NULL );
-                        if ( Return == NULL && PyErr_Occurred() )
+                        if ( arglist )
                         {
-                            spdlog::error( "Error calling callback" );
-                            PyErr_PrintEx(0);
-                            PyErr_Clear();
+                            PyObject* Return = PyObject_CallFunctionObjArgs( Callback, arglist, NULL );
+                            if ( Return == NULL && PyErr_Occurred() )
+                            {
+                                spdlog::error( "Error calling callback" );
+                                PyErr_PrintEx(0);
+                                PyErr_Clear();
+                            }
+                            Py_XDECREF( Return );
+                            Py_DECREF( arglist );
                         }
                     } else {
                         spdlog::error( "Callback is not callable" );
                     }
                 }
+
+                PyGILState_Release( gilState );
             }
 
             break;
@@ -671,6 +697,12 @@ bool Packager::DispatchSession( Util::Packager::PPackage Package )
             {
                 if ( Session.Name.compare( Package->Body.Info[ "DemonID" ].c_str() ) == 0 )
                 {
+                    if ( !Session.InteractedWidget )
+                    {
+                        spdlog::debug( "SendCommand: InteractedWidget not yet created for session {}", Session.Name.toStdString() );
+                        break;
+                    }
+
                     auto AgentType = QString( Package->Body.Info[ "AgentType" ].c_str() );
 
                     if ( ! Package->Body.Info[ "CommandLine" ].empty() )
@@ -710,10 +742,48 @@ bool Packager::DispatchSession( Util::Packager::PPackage Package )
             {
                 if ( Session.Name.compare( Package->Body.Info[ "DemonID" ].c_str() ) == 0 )
                 {
+                    if ( !Session.InteractedWidget )
+                    {
+                        spdlog::debug( "ReceiveCommand: InteractedWidget not yet created for session {}", Session.Name.toStdString() );
+                        break;
+                    }
+
                     Session.InteractedWidget->DemonCommands->OutputDispatch.DemonCommandInstance = Session.InteractedWidget->DemonCommands;
 
                     int CommandID = QString( Package->Body.Info[ "CommandID" ].c_str() ).toInt();
                     auto Output   = QString( Package->Body.Info[ "Output" ].c_str() );
+
+                    // Invoke registered output callbacks
+                    if ( !HavocX::Teamserver.OutputCallbacks.empty() )
+                    {
+                        PyGILState_STATE gilState = PyGILState_Ensure();
+
+                        for ( auto& Callback : HavocX::Teamserver.OutputCallbacks )
+                        {
+                            if ( Callback && PyCallable_Check( Callback ) )
+                            {
+                                auto DecodedOutput = QByteArray::fromBase64( Output.toLocal8Bit() );
+                                PyObject* arglist = Py_BuildValue( "sis",
+                                    Session.Name.toStdString().c_str(),
+                                    CommandID,
+                                    DecodedOutput.toStdString().c_str() );
+                                if ( arglist )
+                                {
+                                    PyObject* Return = PyObject_CallObject( Callback, arglist );
+                                    if ( Return == NULL && PyErr_Occurred() )
+                                    {
+                                        spdlog::error( "Error calling output callback" );
+                                        PyErr_PrintEx(0);
+                                        PyErr_Clear();
+                                    }
+                                    Py_XDECREF( Return );
+                                    Py_DECREF( arglist );
+                                }
+                            }
+                        }
+
+                        PyGILState_Release( gilState );
+                    }
 
                     switch ( CommandID )
                     {
@@ -746,14 +816,22 @@ bool Packager::DispatchSession( Util::Packager::PPackage Package )
                                 auto it = Session.TaskIDToPythonCallbacks.find( TaskID );
                                 if ( it != Session.TaskIDToPythonCallbacks.end() ) {
                                     Callback = it->second;
-                                    if ( PyCallable_Check( Callback ) )
+                                    PyGILState_STATE gilState = PyGILState_Ensure();
+                                    if ( Callback && PyCallable_Check( Callback ) )
                                     {
                                         PyObject *arglist = Py_BuildValue( "ssOss", Session.Name.toStdString().c_str(), TaskID.toStdString().c_str(), Worked == "true" ? Py_True : Py_False, Output.toStdString().c_str(), Error.toStdString().c_str() );
-                                        PyObject_CallObject( Callback, arglist );
-                                        Py_XDECREF( Callback );
+                                        if ( arglist )
+                                        {
+                                            PyObject* result = PyObject_CallObject( Callback, arglist );
+                                            Py_XDECREF( result );
+                                            Py_DECREF( arglist );
+                                        }
+                                        Py_DECREF( Callback );
                                     } else {
                                         spdlog::error( "Callback is not callable" );
+                                        Py_XDECREF( Callback );
                                     }
+                                    PyGILState_Release( gilState );
 
                                     Session.TaskIDToPythonCallbacks.erase( TaskID );
 
@@ -796,6 +874,42 @@ bool Packager::DispatchSession( Util::Packager::PPackage Package )
 
         case Util::Packager::Session::Remove:
         {
+            auto AgentID = Package->Body.Info[ "AgentID" ];
+            auto TabSession = HavocX::Teamserver.TabSession;
+
+            // Remove from session graph first (before erasing from Sessions list)
+            if ( TabSession && TabSession->SessionGraphWidget )
+            {
+                Util::SessionItem tempSession;
+                tempSession.Name = QString::fromStdString( AgentID );
+                TabSession->SessionGraphWidget->GraphNodeRemove( tempSession );
+            }
+
+            // Remove from sessions list
+            for ( auto it = HavocX::Teamserver.Sessions.begin(); it != HavocX::Teamserver.Sessions.end(); ++it )
+            {
+                if ( it->Name.toStdString() == AgentID )
+                {
+                    HavocX::Teamserver.Sessions.erase( it );
+                    break;
+                }
+            }
+
+            // Remove from session table widget
+            if ( TabSession && TabSession->SessionTableWidget && TabSession->SessionTableWidget->SessionTableWidget )
+            {
+                for ( int i = 0; i < TabSession->SessionTableWidget->SessionTableWidget->rowCount(); i++ )
+                {
+                    auto item = TabSession->SessionTableWidget->SessionTableWidget->item( i, 0 );
+                    if ( item && item->text().toStdString() == AgentID )
+                    {
+                        TabSession->SessionTableWidget->SessionTableWidget->removeRow( i );
+                        break;
+                    }
+                }
+            }
+
+            spdlog::info( "Session {} removed", AgentID );
             break;
         }
 
@@ -973,6 +1087,7 @@ bool Packager::DispatchTeamserver( Util::Packager::PPackage Package )
             }
 
             HavocX::Teamserver.TabSession->Teamserver->AddLoggerText( Text );
+            break;
         }
 
         case Util::Packager::Teamserver::Profile:

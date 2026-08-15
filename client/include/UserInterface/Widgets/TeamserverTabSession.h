@@ -50,6 +50,7 @@ public:
     SmallAppWidgets_t*                SmallAppWidgets     = {};
 
     void setupUi( QWidget* Page, QString TeamserverName );
+    void setDBManager( HavocSpace::DBManager* db );
     void NewBottomTab( QWidget* TabWidget, const std::string& TitleName, QString IconPath = "" ) const;
     void NewWidgetTab( QWidget* TabWidget, const std::string& TitleName ) const;
 

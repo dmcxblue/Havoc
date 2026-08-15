@@ -168,18 +168,21 @@ func (t *Teamserver) ListenerRemove(Name string) ([]*Listener, []packager.Packag
 
 			t.Listeners = append(t.Listeners[:i], t.Listeners[i+1:]...)
 
+			t.EventsMutex.Lock()
 			for EventID := range t.EventsList {
 				if t.EventsList[EventID].Head.Event == packager.Type.Listener.Type {
 					if t.EventsList[EventID].Body.SubEvent == packager.Type.Listener.Add {
 						if name, ok := t.EventsList[EventID].Body.Info["Name"]; ok {
 							if name == Name {
 								t.EventsList = append(t.EventsList[:EventID], t.EventsList[EventID+1:]...)
+								t.EventsMutex.Unlock()
 								return t.Listeners, t.EventsList
 							}
 						}
 					}
 				}
 			}
+			t.EventsMutex.Unlock()
 
 			return t.Listeners, t.EventsList
 		}
@@ -203,6 +206,12 @@ func (t *Teamserver) ListenerEdit(Type int, Config any) {
 				t.Listeners[i].Config.(*handlers.HTTP).Config.Uris = Config.(handlers.HTTPConfig).Uris
 				t.Listeners[i].Config.(*handlers.HTTP).Config.Proxy = Config.(handlers.HTTPConfig).Proxy
 				t.Listeners[i].Config.(*handlers.HTTP).Config.BehindRedir = t.Profile.Config.Demon.TrustXForwardedFor
+
+				// Persist edit to database
+				configJson, err := json.Marshal(structs.Map(t.Listeners[i].Config.(*handlers.HTTP).Config))
+				if err == nil {
+					t.DB.ListenerUpdate(Config.(handlers.HTTPConfig).Name, handlers.AGENT_HTTP, string(configJson))
+				}
 			}
 
 		}
@@ -254,6 +263,17 @@ func (t *Teamserver) ListenerAdd(FromUser string, Type int, Config any) packager
 		Info["Status"] = Config.(*handlers.HTTP).Active
 
 		Info["Response Headers"] = strings.Join(Config.(*handlers.HTTP).Config.Response.Headers, "\r\n")
+
+		// Flatten nested structs for DB persistence (structs.Map creates nested maps)
+		delete(Info, "DataLocation")
+		Info["DataLocation"] = Config.(*handlers.HTTP).Config.DataLocation.Location
+		Info["DataLocationName"] = Config.(*handlers.HTTP).Config.DataLocation.Name
+		Info["ResponseDataLocation"] = Config.(*handlers.HTTP).Config.Response.DataLocation.Location
+		Info["ResponseDataLocationName"] = Config.(*handlers.HTTP).Config.Response.DataLocation.Name
+		Info["UriPrefix"] = Config.(*handlers.HTTP).Config.UriPrefix
+		Info["PortConn"] = Config.(*handlers.HTTP).Config.PortConn
+		Info["Methode"] = Config.(*handlers.HTTP).Config.Methode
+		Info["HostHeader"] = Config.(*handlers.HTTP).Config.HostHeader
 
 		Info["Secure"] = "false"
 		if Config.(*handlers.HTTP).Config.Secure {

@@ -1,5 +1,6 @@
 #include <global.hpp>
 
+#include <Havoc/DBManager/DBManager.hpp>
 #include <UserInterface/Widgets/TeamserverTabSession.h>
 #include <UserInterface/Widgets/SessionTable.hpp>
 #include <UserInterface/Widgets/SessionGraph.hpp>
@@ -26,7 +27,7 @@ using namespace UserInterface::Widgets;
 
 void HavocNamespace::UserInterface::Widgets::TeamserverTabSession::setupUi( QWidget* Page, QString TeamserverName )
 {
-    TeamserverName = TeamserverName;
+    this->TeamserverName = TeamserverName;
     PageWidget = Page;
 
     SmallAppWidgets = new SmallAppWidgets_t;
@@ -400,16 +401,39 @@ void UserInterface::Widgets::TeamserverTabSession::handleDemonContextMenu( const
                 }
                 else if ( action->text().compare( "Remove" ) == 0 )
                 {
-                    auto SessionID = SessionTableWidget->SessionTableWidget->item( SessionTableWidget->SessionTableWidget->currentRow(), 0 )->text();
+                    // Add to hidden sessions database for persistence
+                    if ( dbManager ) {
+                        dbManager->AddHiddenSession( HavocX::Teamserver.Name, SessionID );
+                    } else {
+                        spdlog::warn( "[Remove] dbManager is NULL - hidden session not persisted" );
+                    }
 
-                    for ( auto & Session : HavocX::Teamserver.Sessions )
+                    // Find the table row by agent ID, not by currentRow()
+                    for ( int i = 0; i < SessionTableWidget->SessionTableWidget->rowCount(); i++ )
                     {
-                        if ( SessionID.compare( Session.Name ) == 0 )
+                        if ( SessionTableWidget->SessionTableWidget->item( i, 0 )->text().compare( SessionID ) == 0 )
                         {
-                            SessionTableWidget->SessionTableWidget->removeRow( SessionTableWidget->SessionTableWidget->currentRow() );
-                            HavocX::Teamserver.TabSession->SessionGraphWidget->GraphNodeRemove( Session );
+                            SessionTableWidget->SessionTableWidget->removeRow( i );
+                            break;
                         }
                     }
+
+                    // Remove from graph and Sessions vector
+                    for ( auto it = HavocX::Teamserver.Sessions.begin(); it != HavocX::Teamserver.Sessions.end(); ++it )
+                    {
+                        if ( SessionID.compare( it->Name ) == 0 )
+                        {
+                            if ( HavocX::Teamserver.TabSession && HavocX::Teamserver.TabSession->SessionGraphWidget ) {
+                                HavocX::Teamserver.TabSession->SessionGraphWidget->GraphNodeRemove( *it );
+                            }
+
+                            HavocX::Teamserver.Sessions.erase( it );
+                            break;
+                        }
+                    }
+
+                    // Must break — erase invalidated the range-for iterator
+                    break;
                 }
                 else if ( action->text().compare( "Thread" ) == 0 || action->text().compare( "Process" ) == 0 )
                 {
@@ -524,4 +548,9 @@ void UserInterface::Widgets::TeamserverTabSession::removeTabSmall( int index ) c
     } else if ( tabWidgetSmall->count() == 1 ) {
         tabWidgetSmall->setMovable( false );
     }
+}
+
+void UserInterface::Widgets::TeamserverTabSession::setDBManager( HavocSpace::DBManager* db )
+{
+    this->dbManager = db;
 }

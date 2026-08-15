@@ -76,13 +76,15 @@ type ListenerHTTP struct {
 	UserAgent  string   `yaotl:"UserAgent,optional"`
 	Headers    []string `yaotl:"Headers,optional"`
 	Uris       []string `yaotl:"Uris,optional"`
+	UriPrefix  string   `yaotl:"UriPrefix,optional"`
 	Secure     bool     `yaotl:"Secure,optional"`
 	HostHeader string   `yaotl:"HostHeader,optional"`
 
 	/* optional sub blocks */
-	Cert     *ListenerHttpCerts    `yaotl:"Cert,block"`
-	Response *ListenerHttpResponse `yaotl:"Response,block"`
-	Proxy    *ListenerHttpProxy    `yaotl:"Proxy,block"`
+	Cert     *ListenerHttpCerts        `yaotl:"Cert,block"`
+	Response *ListenerHttpResponse     `yaotl:"Response,block"`
+	Proxy    *ListenerHttpProxy        `yaotl:"Proxy,block"`
+	HavocId  *ListenerHttpDataLocation `yaotl:"HavocId,block"`
 }
 
 type ListenerSMB struct {
@@ -100,8 +102,14 @@ type ListenerExternal struct {
 	Endpoint string `yaotl:"Endpoint"`
 }
 
+type ListenerHttpDataLocation struct {
+	Location string `yaotl:"Location"`
+	Name     string `yaotl:"Name,optional"`
+}
+
 type ListenerHttpResponse struct {
-	Headers []string `yaotl:"Headers,optional"`
+	Headers []string                  `yaotl:"Headers,optional"`
+	HavocId *ListenerHttpDataLocation `yaotl:"HavocId,block"`
 }
 
 type ListenerHttpProxy struct {
@@ -152,5 +160,6 @@ type Demon struct {
 
 	Binary *Binary `yaotl:"Binary,block"`
 
-	TrustXForwardedFor bool `yaotl:"TrustXForwardedFor,optional"`
+	TrustXForwardedFor bool   `yaotl:"TrustXForwardedFor,optional"`
+	Magic              string `yaotl:"Magic,optional"`
 }

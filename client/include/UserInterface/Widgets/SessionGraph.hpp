@@ -41,11 +41,13 @@ public:
 
 public:
     Node( NodeItemType NodeType, QString NodeLabel, GraphWidget* graphWidget );
+    ~Node() override;
 
     void appendChild( Node* child );
     void removeChild( Node* child );
 
     void addEdge( Edge* edge );
+    void removeEdge( Edge* edge );
     QVector<Edge*> edges() const;
 
     enum { Type = UserType + 1 };
@@ -142,6 +144,7 @@ public:
     Node* dest   = nullptr;
 
     Edge( Node* sourceNode, Node* destNode, QColor Color );
+    ~Edge() override;
 
     Node* sourceNode() const;
     Node* destNode() const;

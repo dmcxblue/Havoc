@@ -56,6 +56,7 @@ func (listeners) ListenerAdd(FromUser string, Type int, Config any) packager.Pac
 
 		delete(Package.Body.Info, "Proxy")
 		delete(Package.Body.Info, "Response")
+		delete(Package.Body.Info, "DataLocation")
 		delete(Package.Body.Info, "Hosts")
 
 		var Hosts string
@@ -67,6 +68,11 @@ func (listeners) ListenerAdd(FromUser string, Type int, Config any) packager.Pac
 			}
 		}
 		Package.Body.Info["Hosts"] = Hosts
+
+		Package.Body.Info["DataLocation"] = Config.(*handlers.HTTP).Config.DataLocation.Location
+		Package.Body.Info["DataLocationName"] = Config.(*handlers.HTTP).Config.DataLocation.Name
+		Package.Body.Info["ResponseDataLocation"] = Config.(*handlers.HTTP).Config.Response.DataLocation.Location
+		Package.Body.Info["ResponseDataLocationName"] = Config.(*handlers.HTTP).Config.Response.DataLocation.Name
 
 		break
 
@@ -133,6 +139,7 @@ func (listeners) ListenerEdit(Type int, Config any) packager.Package {
 
 		delete(Package.Body.Info, "Proxy")
 		delete(Package.Body.Info, "Response")
+		delete(Package.Body.Info, "DataLocation")
 		delete(Package.Body.Info, "Hosts")
 
 		var Hosts string
@@ -144,6 +151,12 @@ func (listeners) ListenerEdit(Type int, Config any) packager.Package {
 			}
 		}
 		Package.Body.Info["Hosts"] = Hosts
+		Package.Body.Info["Status"] = "Online"
+
+		Package.Body.Info["DataLocation"] = Config.(*handlers.HTTPConfig).DataLocation.Location
+		Package.Body.Info["DataLocationName"] = Config.(*handlers.HTTPConfig).DataLocation.Name
+		Package.Body.Info["ResponseDataLocation"] = Config.(*handlers.HTTPConfig).Response.DataLocation.Location
+		Package.Body.Info["ResponseDataLocationName"] = Config.(*handlers.HTTPConfig).Response.DataLocation.Name
 
 		break
 	}

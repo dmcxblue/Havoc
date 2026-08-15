@@ -1,0 +1,58 @@
+# Local test profile — bypasses Azure to isolate Demon parameter injection
+Teamserver {
+    Host = "0.0.0.0"
+    Port = 40056
+
+    Build {
+        Compiler64 = "/usr/bin/x86_64-w64-mingw32-gcc"
+        Compiler86 = "/usr/bin/i686-w64-mingw32-gcc"
+        Nasm       = "/usr/bin/nasm"
+    }
+}
+
+Operators {
+    user "dmcxblue" {
+        Password = "rt2025"
+    }
+}
+
+Demon {
+    Sleep  = 10
+    Jitter = 35
+
+    TrustXForwardedFor = false
+
+    Injection {
+        Spawn64 = "C:\\Windows\\System32\\svchost.exe"
+        Spawn32 = "C:\\Windows\\SysWOW64\\svchost.exe"
+    }
+}
+
+Listeners {
+    Http {
+        Name         = "LocalTest"
+        Hosts        = ["192.168.1.18"]
+        HostBind     = "192.168.1.18"
+        HostRotation = "round-robin"
+        PortBind     = 8080
+        Secure       = false
+        KillDate     = "2028-06-10 23:59:59"
+        UserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+        Uris = [
+            "/s",
+        ]
+
+        HavocId {
+            Location = "parameter"
+            Name     = "tok"
+        }
+
+        Response {
+            HavocId {
+                Location = "header"
+                Name     = "X-Req-Id"
+            }
+        }
+    }
+}

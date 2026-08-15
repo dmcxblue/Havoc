@@ -34,13 +34,15 @@ type ConfigService struct {
 }
 
 type Service struct {
-	engine  *gin.Engine
-	clients []*ClientService
+	engine     *gin.Engine
+	clients    []*ClientService
+	clientsMtx sync.Mutex
 
 	Config profile.ServiceConfig
 
 	Teamserver Teamserver
 	Agents     []*AgentService
+	AgentsMtx  sync.Mutex
 	Listeners  []*ListenerService
 	Data       struct {
 		ServerAgents *agent.Agents

@@ -8,7 +8,7 @@ class HavocNamespace::UserInterface::Widgets::SessionTable : public QWidget
 {
 private:
     QGridLayout*        gridLayout       = nullptr;
-    QString             TeamserverName   = nullptr;
+    QString             TeamserverName;
 
     QTableWidgetItem*   TitleAgentID     = nullptr;
     QTableWidgetItem*   TitleInternal    = nullptr;

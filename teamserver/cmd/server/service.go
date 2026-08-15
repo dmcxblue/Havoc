@@ -7,6 +7,9 @@ import (
 )
 
 func (t *Teamserver) ServiceAgent(MagicValue int) agent.ServiceAgentInterface {
+	if t.Service == nil {
+		return nil
+	}
 	for _, agentService := range t.Service.Agents {
 		if agentService.MagicValue == fmt.Sprintf("0x%x", MagicValue) {
 			return agentService
@@ -18,6 +21,9 @@ func (t *Teamserver) ServiceAgent(MagicValue int) agent.ServiceAgentInterface {
 }
 
 func (t *Teamserver) ServiceAgentExist(MagicValue int) bool {
+	if t.Service == nil {
+		return false
+	}
 	for _, agentService := range t.Service.Agents {
 		if agentService.MagicValue == fmt.Sprintf("0x%x", MagicValue) {
 			return true

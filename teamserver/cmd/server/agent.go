@@ -28,14 +28,18 @@ func (t *Teamserver) Died(Agent *agent.Agent) {
 }
 
 func (t *Teamserver) UnlinkFromAll(Agent *agent.Agent) {
-	// remove all links from agent
-	for i := range Agent.Pivots.Links {
+	// remove all links from agent using reverse iteration to avoid skipping elements
+	for i := len(Agent.Pivots.Links) - 1; i >= 0; i-- {
 		t.LinkRemove(Agent, Agent.Pivots.Links[i], false)
 		Agent.Pivots.Links = append(Agent.Pivots.Links[:i], Agent.Pivots.Links[i+1:]...)
 	}
 
 	// remove agent from parent's link
-	for _, ParentAgent := range t.Agents.Agents {
+	t.Agents.RLock()
+	agents := t.Agents.Agents
+	t.Agents.RUnlock()
+
+	for _, ParentAgent := range agents {
 		if ParentAgent.NameID == Agent.NameID {
 			continue
 		}
@@ -51,33 +55,55 @@ func (t *Teamserver) UnlinkFromAll(Agent *agent.Agent) {
 }
 
 func (t *Teamserver) ParentOf(Agent *agent.Agent) (int, error) {
-	var AgentID, _ = strconv.ParseInt(Agent.NameID, 16, 64)
+	AgentID, err := strconv.ParseInt(Agent.NameID, 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse agent NameID: %w", err)
+	}
 
 	ID, err := t.DB.ParentOf(int(AgentID))
 	return ID, err
 }
 
 func (t *Teamserver) LinksOf(Agent *agent.Agent) []int {
-	var AgentID, _ = strconv.ParseInt(Agent.NameID, 16, 64)
+	AgentID, err := strconv.ParseInt(Agent.NameID, 16, 64)
+	if err != nil {
+		logger.Error("Failed to parse agent NameID in LinksOf: " + err.Error())
+		return nil
+	}
 
 	return t.DB.LinksOf(int(AgentID))
 }
 
 func (t *Teamserver) LinkAdd(ParentAgent *agent.Agent, LinkAgent *agent.Agent) error {
-	var ParentAgentID, _ = strconv.ParseInt(ParentAgent.NameID, 16, 64)
-	var LinkAgentID,   _ = strconv.ParseInt(LinkAgent.NameID, 16, 64)
+	ParentAgentID, err := strconv.ParseInt(ParentAgent.NameID, 16, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse ParentAgent NameID: %w", err)
+	}
+	LinkAgentID, err := strconv.ParseInt(LinkAgent.NameID, 16, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse LinkAgent NameID: %w", err)
+	}
 
-	err := t.DB.LinkAdd(int(ParentAgentID), int(LinkAgentID))
+	err = t.DB.LinkAdd(int(ParentAgentID), int(LinkAgentID))
 	if err != nil {
 		logger.Error("Could not add link to database: " + err.Error())
+		return err
 	}
 
 	return nil
 }
 
 func (t *Teamserver) LinkRemove(ParentAgent *agent.Agent, LinkAgent *agent.Agent, UpdateLinks bool) {
-	var ParentAgentID, _ = strconv.ParseInt(ParentAgent.NameID, 16, 64)
-	var LinkAgentID,   _ = strconv.ParseInt(LinkAgent.NameID, 16, 64)
+	ParentAgentID, err := strconv.ParseInt(ParentAgent.NameID, 16, 64)
+	if err != nil {
+		logger.Error("Failed to parse ParentAgent NameID in LinkRemove: " + err.Error())
+		return
+	}
+	LinkAgentID, err := strconv.ParseInt(LinkAgent.NameID, 16, 64)
+	if err != nil {
+		logger.Error("Failed to parse LinkAgent NameID in LinkRemove: " + err.Error())
+		return
+	}
 
 	LinkAgent.Active = false
 	LinkAgent.Reason = "Disconnected"
@@ -91,7 +117,7 @@ func (t *Teamserver) LinkRemove(ParentAgent *agent.Agent, LinkAgent *agent.Agent
 		}
 	}
 
-	err := t.DB.LinkRemove(int(ParentAgentID), int(LinkAgentID))
+	err = t.DB.LinkRemove(int(ParentAgentID), int(LinkAgentID))
 	if err != nil {
 		logger.Error("Could not remove link to database: " + err.Error())
 	}
@@ -118,6 +144,30 @@ func (t *Teamserver) AgentAdd(Agent *agent.Agent) []*agent.Agent {
 	}
 
 	return t.Agents.AgentsAppend(Agent)
+}
+
+func (t *Teamserver) AgentRemove(AgentID string) {
+	var AgentIDInt, err = strconv.ParseInt(AgentID, 16, 64)
+	if err != nil {
+		logger.Error("Failed to parse AgentID: " + err.Error())
+		return
+	}
+
+	// Remove from database
+	err = t.DB.AgentRemove(int(AgentIDInt))
+	if err != nil {
+		logger.Error("Could not remove agent from database: " + err.Error())
+	}
+
+	// Remove from in-memory slice
+	t.Agents.AgentsRemove(AgentID)
+
+	// Broadcast removal to all clients
+	var pk = events.Demons.DemonRemove(AgentID)
+	t.EventAppend(pk)
+	t.EventBroadcast("", pk)
+
+	logger.Info("Agent " + AgentID + " removed")
 }
 
 func (t *Teamserver) AgentSendNotify(Agent *agent.Agent) {
@@ -153,6 +203,9 @@ func (t *Teamserver) AgentCallbackSize(DemonInstance *agent.Agent, i int) {
 }
 
 func (t *Teamserver) AgentInstance(AgentID int) *agent.Agent {
+	t.Agents.RLock()
+	defer t.Agents.RUnlock()
+
 	for _, demon := range t.Agents.Agents {
 		var NameID, _ = strconv.ParseInt(demon.NameID, 16, 64)
 
@@ -181,6 +234,9 @@ func (t *Teamserver) AgentLastTimeCalled(AgentID string, LastCallback string, Sl
 }
 
 func (t *Teamserver) AgentExist(AgentID int) bool {
+	t.Agents.RLock()
+	defer t.Agents.RUnlock()
+
 	for _, demon := range t.Agents.Agents {
 		var NameID, err = strconv.ParseInt(demon.NameID, 16, 64)
 		if err != nil {
@@ -193,6 +249,18 @@ func (t *Teamserver) AgentExist(AgentID int) bool {
 		}
 	}
 	return false
+}
+
+func (t *Teamserver) AgentByNameID(nameID string) *agent.Agent {
+	t.Agents.RLock()
+	defer t.Agents.RUnlock()
+
+	for _, demon := range t.Agents.Agents {
+		if demon.NameID == nameID {
+			return demon
+		}
+	}
+	return nil
 }
 
 func (t *Teamserver) AgentConsole(AgentID string, CommandID int, Output map[string]string) {

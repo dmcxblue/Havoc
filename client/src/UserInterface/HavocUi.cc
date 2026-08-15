@@ -575,6 +575,7 @@ void UserInterface::HavocUi::NewTeamserverTab(HavocNamespace::Util::ConnectionIn
 {
     Connection->TabSession = new UserInterface::Widgets::TeamserverTabSession;
     Connection->TabSession->setupUi( new QWidget, Connection->Name );
+    Connection->TabSession->setDBManager( this->dbManager );
 
     int id = TeamserverTabWidget->addTab( Connection->TabSession->PageWidget, Connection->Name );
     TeamserverTabWidget->setCurrentIndex( id );
@@ -585,6 +586,7 @@ void UserInterface::HavocUi::NewTeamserverTab(QString Name )
 {
     HavocX::Teamserver.TabSession = new UserInterface::Widgets::TeamserverTabSession;
     HavocX::Teamserver.TabSession->setupUi( new QWidget, HavocX::Teamserver.Name );
+    HavocX::Teamserver.TabSession->setDBManager( this->dbManager );
 
     int id = TeamserverTabWidget->addTab( HavocX::Teamserver.TabSession->PageWidget, HavocX::Teamserver.Name );
     TeamserverTabWidget->setCurrentIndex( id );

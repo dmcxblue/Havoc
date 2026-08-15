@@ -12,6 +12,13 @@
 #define TRANSPORT_HTTP_ROTATION_RANDOM       1
 #define ERROR_INTERNET_CANNOT_CONNECT        12029
 
+#define PAYLOAD_LOC_BODY      0
+#define PAYLOAD_LOC_HEADER    1
+#define PAYLOAD_LOC_COOKIE    2
+#define PAYLOAD_LOC_PARAM     3
+
+#define METADATA_SIZE         12
+
 typedef struct _HOST_DATA
 {
     /* Host Data */

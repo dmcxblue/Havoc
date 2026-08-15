@@ -110,6 +110,16 @@ typedef struct
                 LPWSTR Username; /* TODO: Instead of using LPWSTR use BUFFER (to have the size of the string too) */
                 LPWSTR Password; /* TODO: Instead of using LPWSTR use BUFFER (to have the size of the string too) */
             } Proxy;
+
+            struct {
+                DWORD  Location;
+                LPWSTR Name;
+            } DataReq;
+
+            struct {
+                DWORD  Location;
+                LPWSTR Name;
+            } DataResp;
 #endif
 
 #ifdef TRANSPORT_SMB
@@ -155,6 +165,8 @@ typedef struct
             PBYTE Key;
             PBYTE IV;
         } AES;
+
+        DWORD MagicValue;
 
     } Config ;
 

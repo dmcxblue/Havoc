@@ -220,6 +220,7 @@ type AgentInfo struct {
 }
 
 type Agents struct {
+	sync.RWMutex
 	Agents []*Agent
 }
 

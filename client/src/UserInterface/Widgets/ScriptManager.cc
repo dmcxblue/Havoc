@@ -7,6 +7,8 @@
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QTableWidgetItem>
+#include <QDir>
+#include <QFileInfo>
 
 using namespace HavocNamespace::UserInterface::Widgets;
 
@@ -116,6 +118,13 @@ bool ScriptManager::AddScript( QString Path )
 
     HavocX::Teamserver.LoadingScript = Path.toStdString();
 
+    // Resolve the script's directory so relative asset paths (e.g. the BOF
+    // ObjectFiles/*.o referenced by InlineExecute) load correctly when the
+    // registered commands run later, regardless of where the client was started.
+    auto ScriptDir = QFileInfo( Path ).absolutePath();
+    if ( ! ScriptDir.isEmpty() )
+        QDir::setCurrent( ScriptDir );
+
     if ( Script != nullptr ) {
         if ( ! Script.isEmpty() ) {
             PyGILState_STATE gstate = PyGILState_Ensure();
@@ -214,7 +223,6 @@ void ScriptManager::ReloadScript() const
 }
 
 // Clear Python objects defined by the removed script
-// Note: Full namespace cleanup requires tracking per-script namespaces
 void ScriptManager::RemoveScript() const
 {
     auto row = tableLoadedScripts->currentRow();
@@ -227,13 +235,32 @@ void ScriptManager::RemoveScript() const
 
     auto Path = item->text();
 
-    // Clear any Python errors before cleanup
     PyGILState_STATE gstate = PyGILState_Ensure();
+
+    // Clear any pending Python errors
     if ( PyErr_Occurred() ) {
         PyErr_Clear();
     }
+
+    // Decrement reference counts for all registered callbacks
+    // This allows Python to garbage collect the callback functions
+    for ( auto& callback : HavocX::Teamserver.RegisteredCallbacks ) {
+        if ( callback ) {
+            Py_DECREF( callback );
+        }
+    }
+    HavocX::Teamserver.RegisteredCallbacks.clear();
+
+    for ( auto& callback : HavocX::Teamserver.OutputCallbacks ) {
+        if ( callback ) {
+            Py_DECREF( callback );
+        }
+    }
+    HavocX::Teamserver.OutputCallbacks.clear();
+
     // Run garbage collection to free script resources
     PyRun_SimpleString( "import gc; gc.collect()" );
+
     PyGILState_Release( gstate );
 
     tableLoadedScripts->removeRow( row );

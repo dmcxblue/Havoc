@@ -12,7 +12,8 @@ PyMemberDef PyEventClass_members[] = {
 };
 
 PyMethodDef PyEventClass_methods[] = {
-        { "OnNewSession",   ( PyCFunction ) EventClass_OnNewSession, METH_VARARGS | METH_STATIC, "Event on new session" },
+        { "OnNewSession",   ( PyCFunction ) EventClass_OnNewSession,   METH_VARARGS | METH_STATIC, "Event on new session" },
+        { "OnDemonOutput",  ( PyCFunction ) EventClass_OnDemonOutput,  METH_VARARGS | METH_STATIC, "Event on demon output" },
 
         { NULL },
 };
@@ -112,5 +113,17 @@ PyObject* EventClass_OnNewSession( PPyEvents self, PyObject *args )
 
 PyObject* EventClass_OnDemonOutput( PPyEvents self, PyObject *args )
 {
+    PyObject* Function = NULL;
+
+    if ( ! PyArg_ParseTuple( args, "O", &Function ) )
+        return NULL;
+    if ( ! PyCallable_Check( Function ) ) {
+        PyErr_SetString(PyExc_TypeError, "parameter must be callable");
+        return NULL;
+    }
+
+    Py_INCREF(Function);
+    HavocX::Teamserver.OutputCallbacks.push_back(Function);
+
     Py_RETURN_NONE;
 }

@@ -10,6 +10,7 @@
 #include <UserInterface/Widgets/SessionTable.hpp>
 #include <UserInterface/Widgets/ProcessList.hpp>
 #include <UserInterface/Widgets/FileBrowser.hpp>
+#include <Havoc/DBManager/DBManager.hpp>
 
 #include <Util/ColorText.h>
 
@@ -549,6 +550,13 @@ Edge::Edge( Node* sourceNode, Node* destNode, QColor Color )
     adjust();
 }
 
+Edge::~Edge()
+{
+    // Unregister from endpoints so their edgeList never holds a dangling pointer.
+    if ( source ) source->removeEdge( this );
+    if ( dest )   dest->removeEdge( this );
+}
+
 Node* Edge::sourceNode() const
 {
     return source;
@@ -758,6 +766,13 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
                 }
                 else if ( action->text().compare( "Remove" ) == 0 )
                 {
+                    // Add to hidden sessions database for persistence
+                    if ( HavocX::Teamserver.TabSession && HavocX::Teamserver.TabSession->dbManager ) {
+                        HavocX::Teamserver.TabSession->dbManager->AddHiddenSession( HavocX::Teamserver.Name, Session.Name );
+                    } else {
+                        spdlog::warn( "[SessionGraph::Remove] dbManager is NULL - hidden session not persisted" );
+                    }
+
                     // Remove from session table
                     for ( int i = 0; i < HavocX::Teamserver.TabSession->SessionTableWidget->SessionTableWidget->rowCount(); i++ )
                     {
@@ -929,6 +944,18 @@ Node::Node( NodeItemType NodeType, QString NodeLabel, GraphWidget* graphWidget )
     setZValue( -1 );
 }
 
+Node::~Node()
+{
+    // Sever any surviving edges' back-refs to this node. Edge::adjust/paint/boundingRect
+    // all short-circuit on a null endpoint, so leftover edges become harmless no-ops.
+    for ( Edge* edge : std::as_const( edgeList ) )
+    {
+        if ( ! edge ) continue;
+        if ( edge->source == this ) edge->source = nullptr;
+        if ( edge->dest   == this ) edge->dest   = nullptr;
+    }
+}
+
 void Node::appendChild( Node* child )
 {
     Children.push_back(child);
@@ -950,6 +977,11 @@ void Node::addEdge( Edge* edge )
 {
     edgeList << edge;
     edge->adjust();
+}
+
+void Node::removeEdge( Edge* edge )
+{
+    edgeList.removeAll( edge );
 }
 
 QVector<Edge*> Node::edges() const

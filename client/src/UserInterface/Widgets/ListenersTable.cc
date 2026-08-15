@@ -316,6 +316,37 @@ void UserInterface::Widgets::ListenersTable::ListenerEdit( Util::ListenerItem it
         if ( HavocX::Teamserver.Listeners[ i ].Name == item.Name )
         {
             HavocX::Teamserver.Listeners[ i ].Info = item.Info;
+            HavocX::Teamserver.Listeners[ i ].Protocol = item.Protocol;
+        }
+    }
+
+    // Update the table row to reflect the changes
+    for ( int row = 0; row < tableWidget->rowCount(); row++ )
+    {
+        if ( tableWidget->item( row, 0 )->text().toStdString() == item.Name )
+        {
+            // Update Protocol (column 1)
+            tableWidget->item( row, 1 )->setText( item.Protocol.c_str() );
+
+            // Update Host/Port based on protocol type
+            if ( item.Protocol == Listener::PayloadSMB.toStdString() )
+            {
+                tableWidget->item( row, 2 )->setText( R"(\\.\pipe\)" + any_cast<Listener::SMB>( item.Info ).PipeName );
+            }
+            else if ( item.Protocol == Listener::PayloadHTTP.toStdString() || item.Protocol == Listener::PayloadHTTPS.toStdString() )
+            {
+                tableWidget->item( row, 2 )->setText( any_cast<Listener::HTTP>( item.Info ).HostBind );
+                tableWidget->item( row, 3 )->setText( any_cast<Listener::HTTP>( item.Info ).PortBind );
+                if ( any_cast<Listener::HTTP>( item.Info ).PortConn == "0" )
+                    tableWidget->item( row, 4 )->setText( any_cast<Listener::HTTP>( item.Info ).PortBind );
+                else
+                    tableWidget->item( row, 4 )->setText( any_cast<Listener::HTTP>( item.Info ).PortConn );
+            }
+            else if ( item.Protocol == Listener::PayloadExternal.toStdString() )
+            {
+                tableWidget->item( row, 2 )->setText( any_cast<Listener::External>( item.Info ).Endpoint );
+            }
+            break;
         }
     }
 }

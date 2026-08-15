@@ -21,6 +21,11 @@ func (demons) NewDemon(Agent *agent.Agent) packager.Package {
 		Package    packager.Package
 	)
 
+	// Defensive nil check to prevent panic
+	if Agent == nil || Agent.Info == nil {
+		return Package
+	}
+
 	Package.Head.Event   = packager.Type.Session.Type
 	Package.Head.Time    = time.Now().Format("02/01/2006 15:04:05")
 	Package.Head.OneTime = "true"
@@ -129,6 +134,20 @@ func (demons) MarkAs(AgentID, Mark string) packager.Package {
 
 	Package.Body.Info["AgentID"] = AgentID
 	Package.Body.Info["Marked"] = Mark
+
+	return Package
+}
+
+func (demons) DemonRemove(AgentID string) packager.Package {
+	var Package packager.Package
+
+	Package.Head.Event = packager.Type.Session.Type
+	Package.Head.Time = time.Now().Format("02/01/2006 15:04:05")
+
+	Package.Body.SubEvent = packager.Type.Session.Remove
+	Package.Body.Info = make(map[string]interface{})
+
+	Package.Body.Info["AgentID"] = AgentID
 
 	return Package
 }

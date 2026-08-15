@@ -5,6 +5,7 @@
 #include <UserInterface/Widgets/TeamserverTabSession.h>
 #include <UserInterface/SmallWidgets/EventViewer.hpp>
 #include <UserInterface/Widgets/DemonInteracted.h>
+#include <Havoc/DBManager/DBManager.hpp>
 
 #include <QHeaderView>
 #include <QItemSelectionModel>
@@ -81,6 +82,13 @@ void HavocNamespace::UserInterface::Widgets::SessionTable::setupUi(QWidget *Form
 
 void HavocNamespace::UserInterface::Widgets::SessionTable::NewSessionItem( Util::SessionItem item ) const
 {
+    /* check if the session is hidden */
+    if ( HavocX::Teamserver.TabSession && HavocX::Teamserver.TabSession->dbManager ) {
+        if ( HavocX::Teamserver.TabSession->dbManager->IsSessionHidden( this->TeamserverName, item.Name ) ) {
+            return;
+        }
+    }
+
     /* check if the session already exists */
     for ( auto& session : HavocX::Teamserver.Sessions ) {
         if ( session.Name.compare( item.Name ) == 0 ) {
@@ -186,24 +194,30 @@ void HavocNamespace::UserInterface::Widgets::SessionTable::NewSessionItem( Util:
             Session.InteractedWidget->TeamserverName = this->TeamserverName;
             Session.InteractedWidget->setupUi( new QWidget );
 
+            auto TabSession = HavocX::Teamserver.TabSession;
+            auto SessionGraph = TabSession ? TabSession->SessionGraphWidget : nullptr;
+
             if ( item.PivotParent.size() > 0 ) {
                 PivotStream = "[Pivot: " + item.PivotParent + Util::ColorText::Cyan( "-<>-<>-" ) + item.Name + "]";
-                HavocX::Teamserver.TabSession->SessionGraphWidget->GraphPivotNodeAdd( item.PivotParent, item );
+                if ( SessionGraph )
+                    SessionGraph->GraphPivotNodeAdd( item.PivotParent, item );
             } else {
                 PivotStream = "[Pivot: "+ Util::ColorText::Cyan( "Direct" ) +"]";
-                HavocX::Teamserver.TabSession->SessionGraphWidget->GraphNodeAdd( item );
+                if ( SessionGraph )
+                    SessionGraph->GraphNodeAdd( item );
             }
 
             AgentMessageInfo =
                     Util::ColorText::Comment( item.First ) + " Agent " + Util::ColorText::Red( item.Name.toUpper() ) + " authenticated as "+ Util::ColorText::Purple( item.Computer + "\\" + item.User ) +
                     " :: [Internal: " + Util::ColorText::Cyan( item.Internal ) + "] [Process: " + Util::ColorText::Red( item.Process + "\\" + item.PID ) + "] [Arch: " + Util::ColorText::Pink( item.Arch ) + "] " + PivotStream;
 
-            prev_cursor = Session.InteractedWidget->Console->textCursor();
-
-            Session.InteractedWidget->Console->moveCursor( QTextCursor::End );
-            Session.InteractedWidget->Console->insertHtml( AgentMessageInfo );
-
-            Session.InteractedWidget->Console->setTextCursor( prev_cursor );
+            if ( Session.InteractedWidget->Console )
+            {
+                prev_cursor = Session.InteractedWidget->Console->textCursor();
+                Session.InteractedWidget->Console->moveCursor( QTextCursor::End );
+                Session.InteractedWidget->Console->insertHtml( AgentMessageInfo );
+                Session.InteractedWidget->Console->setTextCursor( prev_cursor );
+            }
         }
     }
 }

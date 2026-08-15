@@ -9,6 +9,11 @@ import (
 )
 
 type (
+	DataLocationConfig struct {
+		Location string // "body", "header", "cookie", "parameter"
+		Name     string // header/cookie/query-param name
+	}
+
 	ProxyConfig struct {
 		Enabled  bool
 		Type     string
@@ -32,8 +37,10 @@ type (
 		UserAgent    string
 		Headers      []string
 		Uris         []string
+		UriPrefix    string
 		HostHeader   string
 		Secure       bool
+		MagicValue   uint32
 
 		Cert struct {
 			Cert string
@@ -42,8 +49,11 @@ type (
 
 		Proxy ProxyConfig
 
+		DataLocation DataLocationConfig
+
 		Response struct {
-			Headers []string
+			Headers      []string
+			DataLocation DataLocationConfig
 		}
 	}
 

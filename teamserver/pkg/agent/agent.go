@@ -325,7 +325,7 @@ func RegisterInfoToInstance(Header Header, RegisterInfo map[string]any) *Agent {
 }
 
 func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP string) *Agent {
-	//logger.Debug("Response:\n" + hex.Dump(Parser.Buffer()))
+	logger.Debug(fmt.Sprintf("ParseDemonRegisterRequest: AgentID=%x, ParserLength=%d", AgentID, Parser.Length()))
 
 	var (
 		MagicValue   int
@@ -393,9 +393,23 @@ func ParseDemonRegisterRequest(AgentID int, Parser *parser.Parser, ExternalIP st
 			Info: new(AgentInfo),
 		}
 
+		logger.Debug(fmt.Sprintf("After AES key/IV extraction: remaining parser length=%d", Parser.Length()))
+		logger.Debug(fmt.Sprintf("AES Key (first 8 bytes): %x", Session.Encryption.AESKey[:8]))
+		logger.Debug(fmt.Sprintf("AES IV (first 8 bytes): %x", Session.Encryption.AESIv[:8]))
+
 		// check if there is aes key/iv.
 		if bytes.Compare(Session.Encryption.AESKey, AesKeyEmpty) != 0 {
 			Parser.DecryptBuffer(Session.Encryption.AESKey, Session.Encryption.AESIv)
+		}
+
+		logger.Debug(fmt.Sprintf("After decryption: parser length=%d", Parser.Length()))
+		if Parser.Length() > 0 {
+			buf := Parser.Buffer()
+			dumpLen := 64
+			if len(buf) < dumpLen {
+				dumpLen = len(buf)
+			}
+			logger.Debug(fmt.Sprintf("Decrypted first %d bytes: %x", dumpLen, buf[:dumpLen]))
 		}
 
 		if Parser.CanIRead([]parser.ReadType{parser.ReadInt32, parser.ReadBytes, parser.ReadBytes, parser.ReadBytes, parser.ReadBytes, parser.ReadBytes, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt32, parser.ReadInt64, parser.ReadInt32}) {
@@ -782,7 +796,9 @@ func (a *Agent) PivotAddJob(job Job) {
 	// add this job to pivot queue.
 	// tho it's not going to be used besides for the task size calculator
 	// which is going to be displayed to the operator.
+	a.JobQueueMtx.Lock()
 	a.JobQueue = append(a.JobQueue, job)
+	a.JobQueueMtx.Unlock()
 
 	PivotJob = Job{
 		Command: COMMAND_PIVOT,
@@ -826,7 +842,9 @@ func (a *Agent) PivotAddJob(job Job) {
 		pivots = &pivots.Parent.Pivots
 	}
 
+	pivots.Parent.JobQueueMtx.Lock()
 	pivots.Parent.JobQueue = append(pivots.Parent.JobQueue, PivotJob)
+	pivots.Parent.JobQueueMtx.Unlock()
 }
 
 func (a *Agent) DownloadAdd(FileID int, FilePath string, FileSize int64) error {
@@ -1264,8 +1282,22 @@ func (a *Agent) ToJson() string {
 }
 
 func (agents *Agents) AgentsAppend(demon *Agent) []*Agent {
+	agents.Lock()
+	defer agents.Unlock()
 	agents.Agents = append(agents.Agents, demon)
 	return agents.Agents
+}
+
+func (agents *Agents) AgentsRemove(nameID string) bool {
+	agents.Lock()
+	defer agents.Unlock()
+	for i := range agents.Agents {
+		if agents.Agents[i].NameID == nameID {
+			agents.Agents = append(agents.Agents[:i], agents.Agents[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 func getWindowsVersionString(OsVersion []int) string {

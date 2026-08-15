@@ -8,8 +8,7 @@
 
 #include <QFile>
 
-// TODO: refactor this
-
+// Helper to create and send a command package to the teamserver
 auto NewPackageCommand( const QString& TeamserverName, Util::Packager::Body_t Body ) -> void
 {
     auto Package = new Util::Packager::Package;
@@ -192,7 +191,7 @@ auto CommandExecute::ShellcodeInject( QString TaskID, QString InjectionTechnique
             { "Way",         "Inject" },
             { "Technique",   InjectionTechnique.toStdString() },
             { "Binary",      Content.toBase64().toStdString() },
-            { "Arguments",   Arguments.toUtf8().toBase64().toStdString() },
+            { "Argument",    Arguments.toUtf8().toBase64().toStdString() },
             { "PID",         TargetPID.toStdString() },
             { "Arch",        TargetArch.toStdString() },
         },
@@ -217,7 +216,7 @@ auto CommandExecute::ShellcodeSpawn( QString TaskID, QString InjectionTechnique,
             { "Way",         "Spawn" },
             { "Technique",   InjectionTechnique.toStdString() },
             { "Binary",      Content.toBase64().toStdString() },
-            { "Arguments",   Arguments.toUtf8().toBase64().toStdString() },
+            { "Argument",    Arguments.toUtf8().toBase64().toStdString() },
             { "Arch",        TargetArch.toStdString() },
         },
     };
@@ -241,7 +240,7 @@ auto CommandExecute::ShellcodeExecute( QString TaskID, QString InjectionTechniqu
                 { "Way",         "Execute" },
                 { "Technique",   InjectionTechnique.toStdString() },
                 { "Binary",      Content.toBase64().toStdString() },
-                { "Arguments",   Arguments.toUtf8().toBase64().toStdString() },
+                { "Argument",    Arguments.toUtf8().toBase64().toStdString() },
                 { "Arch",        TargetArch.toStdString() },
             },
     };

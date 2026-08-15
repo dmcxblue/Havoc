@@ -98,8 +98,10 @@ PyObject* TreeClass_new( PyTypeObject *type, PyObject *args, PyObject *kwds )
     self->title = NULL;
     self->TreeWindow = NULL;
     self->TreeWindow = (PPyTreeQWindow)malloc(sizeof(PyTreeQWindow));
-    if (self->TreeWindow == NULL)
+    if (self->TreeWindow == NULL) {
+        Py_TYPE( self )->tp_free( ( PyObject* ) self );
         return NULL;
+    }
     self->TreeWindow->window = NULL;
     self->TreeWindow->layout = NULL;
     self->TreeWindow->scroll= NULL;
@@ -162,15 +164,21 @@ int TreeClass_init( PPyTreeClass self, PyObject *args, PyObject *kwds )
         self->TreeWindow->layout->addWidget(self->TreeWindow->tree_view);
     }
 
+    Py_INCREF(class_callback);
     QObject::connect(self->TreeWindow->tree_view->selectionModel(), &QItemSelectionModel::selectionChanged, [self, class_callback](const QItemSelection &selected, const QItemSelection &deselected) {
+        PyGILState_STATE gilState = PyGILState_Ensure();
         for (const QModelIndex &index : selected.indexes()) {
             QStandardItem *selectedItem = self->TreeWindow->item_model->itemFromIndex(index);
             if (selectedItem) {
-                const char *str = selectedItem->text().toUtf8().constData();
+                QByteArray utf8Text = selectedItem->text().toUtf8();
+                const char *str = utf8Text.constData();
                 PyObject* pystr = PyUnicode_DecodeFSDefault(str);
-                PyObject_CallFunctionObjArgs(class_callback, pystr, nullptr);
+                PyObject* result = PyObject_CallFunctionObjArgs(class_callback, pystr, nullptr);
+                Py_XDECREF(result);
+                Py_XDECREF(pystr);
             }
         }
+        PyGILState_Release(gilState);
     });
 
     return 0;

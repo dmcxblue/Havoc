@@ -8,6 +8,7 @@
 #include <QScrollBar>
 #include <QProcess>
 #include <QDir>
+#include <QFileInfo>
 
 void Store::setupUi( QWidget* Store)
 {
@@ -153,6 +154,12 @@ bool Store::AddScript( QString Path )
     int  Return = 0;
 
     HavocX::Teamserver.LoadingScript = Path.toStdString();
+
+    // Resolve the script's directory so relative asset paths referenced by the
+    // extension (e.g. BOF ObjectFiles/*.o) load correctly when its commands run.
+    auto ScriptDir = QFileInfo( Path ).absolutePath();
+    if ( ! ScriptDir.isEmpty() )
+        QDir::setCurrent( ScriptDir );
 
     if ( Script != nullptr ) {
         if ( ! Script.isEmpty() ) {

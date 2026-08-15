@@ -52,10 +52,10 @@ func (db *DB) LinkExist(ParentAgentID int, LinkAgentID int) bool {
 
 	// execute statement
 	query, err := stmt.Query(ParentAgentID, LinkAgentID)
-	defer query.Close()
 	if err != nil {
 		return false
 	}
+	defer query.Close()
 
 	for query.Next() {
 		var NumRows int
@@ -85,10 +85,10 @@ func (db *DB) ParentOf(AgentID int) (int, error) {
 
 	// execute statement
 	query, err := stmt.Query(AgentID)
-	defer query.Close()
 	if err != nil {
 		return 0, err
 	}
+	defer query.Close()
 
 	for query.Next() {
 
@@ -115,10 +115,10 @@ func (db *DB) LinksOf(AgentID int) []int {
 
 	// execute statement
 	query, err := stmt.Query(AgentID)
-	defer query.Close()
 	if err != nil {
 		return IDs
 	}
+	defer query.Close()
 
 	for query.Next() {
 

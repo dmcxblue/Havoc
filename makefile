@@ -17,12 +17,12 @@ dev-ts-compile:
 	@ echo "[*] compile teamserver"
 	@ cd teamserver; GO111MODULE="on" go build -ldflags="-s -w -X cmd.VersionCommit=$(git rev-parse HEAD)" -o ../havoc main.go 
 
-ts-cleanup: 
+ts-cleanup:
 	@ echo "[*] teamserver cleanup"
 	@ rm -rf ./teamserver/bin
 	@ rm -rf ./data/loot
-	@ rm -rf ./data/x86_64-w64-mingw32-cross 
-	@ rm -rf ./data/havoc.db
+	@ rm -rf ./data/*-w64-mingw32-cross
+	@ rm -rf ./data/*.db
 	@ rm -rf ./data/server.*
 	@ rm -rf ./teamserver/.idea
 	@ rm -rf ./havoc
@@ -32,7 +32,7 @@ client-build:
 	@ echo "[*] building client"
 	@ git submodule update --init --recursive
 	@ mkdir -p client/Build; cd client/Build; cmake ..
-	@ if [ -d "client/Modules" ]; then echo "Modules installed"; else git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch `git rev-parse --abbrev-ref HEAD`; fi
+	@ if [ -d "client/Modules" ]; then echo "Modules installed"; else BRANCH=`git rev-parse --abbrev-ref HEAD`; git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch "$$BRANCH" || git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch main; fi
 	@ if [ -f "client/Modules/nanodump/nanodump.py" ]; then sed -i 's|C:\\Windows\\notepad.exe|C:\\\\Windows\\\\notepad.exe|g' client/Modules/nanodump/nanodump.py; fi
 	@ cmake --build client/Build -- -j 4
 
@@ -40,7 +40,7 @@ client-build-mac:
 	@ echo "[*] building client"
 	@ git submodule update --init --recursive
 	@ mkdir -p client/Build; cd client/Build; cmake ..
-	@ if [ -d "client/Modules" ]; then echo "Modules installed"; else git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch `git rev-parse --abbrev-ref HEAD`; fi
+	@ if [ -d "client/Modules" ]; then echo "Modules installed"; else BRANCH=`git rev-parse --abbrev-ref HEAD`; git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch "$$BRANCH" || git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch main; fi
 	@ if [ -f "client/Modules/nanodump/nanodump.py" ]; then sed -i 's|C:\\Windows\\notepad.exe|C:\\\\Windows\\\\notepad.exe|g' client/Modules/nanodump/nanodump.py; fi
 	@ rm client/external/toml/toml/exception.hpp ; cp exception_mac.hpp client/external/toml/toml/exception.hpp
 	@ cmake --build client/Build -- -j 4
@@ -48,6 +48,7 @@ client-build-mac:
 client-cleanup:
 	@ echo "[*] client cleanup"
 	@ rm -rf ./client/Build
+	@ rm -rf ./client/build
 	@ rm -rf ./client/Bin/*
 	@ rm -rf ./client/Data/database.db
 	@ rm -rf ./client/.idea

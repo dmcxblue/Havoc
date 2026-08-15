@@ -74,8 +74,6 @@ func (db *DB) AgentAdd(agent *agent.Agent) error {
 		return err
 	}
 
-	stmt.Close()
-
 	return nil
 }
 
@@ -169,10 +167,10 @@ func (db *DB) AgentExist(AgentID int) bool {
 
 	// execute statement
 	query, err := stmt.Query(AgentID)
-	defer query.Close()
 	if err != nil {
 		return false
 	}
+	defer query.Close()
 
 	for query.Next() {
 		var NumRows int

@@ -176,7 +176,7 @@ PPACKAGE PackageCreateWithMetaData( UINT32 CommandID )
     PPACKAGE Package = PackageCreate( CommandID );
 
     PackageAddInt32( Package, 0 ); // package length
-    PackageAddInt32( Package, DEMON_MAGIC_VALUE );
+    PackageAddInt32( Package, Instance->Config.MagicValue );
     PackageAddInt32( Package, Instance->Session.AgentID );
     PackageAddInt32( Package, Package->CommandID );
     PackageAddInt32( Package, Package->RequestID );

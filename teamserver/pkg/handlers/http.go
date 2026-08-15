@@ -3,6 +3,8 @@ package handlers
 import (
 	"context"
 	_ "embed"
+	"encoding/base64"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -10,11 +12,10 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"fmt"
 
 	"Havoc/pkg/colors"
-	"Havoc/pkg/common/certs"
 	"Havoc/pkg/common"
+	"Havoc/pkg/common/certs"
 	"Havoc/pkg/logger"
 	"Havoc/pkg/logr"
 
@@ -87,6 +88,73 @@ func (h *HTTP) fake404(ctx *gin.Context) {
 	ctx.Writer.Write(fake404Page)
 }
 
+func (h *HTTP) extractMetadata(ctx *gin.Context) ([]byte, error) {
+	loc := strings.ToLower(h.Config.DataLocation.Location)
+	name := h.Config.DataLocation.Name
+
+	switch loc {
+	case "header":
+		encoded := ctx.Request.Header.Get(name)
+		if encoded == "" {
+			return nil, fmt.Errorf("metadata header %s is empty", name)
+		}
+		return base64.StdEncoding.DecodeString(encoded)
+
+	case "cookie":
+		cookie, err := ctx.Request.Cookie(name)
+		if err != nil || cookie == nil {
+			return nil, fmt.Errorf("metadata cookie %s not found", name)
+		}
+		return base64.StdEncoding.DecodeString(cookie.Value)
+
+	case "parameter":
+		encoded := ctx.Query(name)
+		if encoded == "" {
+			return nil, fmt.Errorf("metadata parameter %s is empty", name)
+		}
+		return base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(encoded)
+
+	default:
+		return nil, nil
+	}
+}
+
+func (h *HTTP) writeResponse(ctx *gin.Context, data []byte) {
+	for _, Header := range h.Config.Response.Headers {
+		var hdr = strings.Split(Header, ":")
+		if len(hdr) > 1 {
+			ctx.Header(hdr[0], strings.TrimSpace(hdr[1]))
+		}
+	}
+
+	respLoc := strings.ToLower(h.Config.Response.DataLocation.Location)
+	respName := h.Config.Response.DataLocation.Name
+
+	if respLoc == "" || respLoc == "body" || len(data) <= 12 {
+		ctx.Writer.Write(data)
+		return
+	}
+
+	metadata := data[:12]
+	bulk := data[12:]
+	encoded := base64.StdEncoding.EncodeToString(metadata)
+
+	switch respLoc {
+	case "header":
+		ctx.Header(respName, encoded)
+	case "cookie":
+		http.SetCookie(ctx.Writer, &http.Cookie{
+			Name:  respName,
+			Value: encoded,
+			Path:  "/",
+		})
+	case "parameter":
+		ctx.Header(respName, encoded)
+	}
+
+	ctx.Writer.Write(bulk)
+}
+
 func (h *HTTP) request(ctx *gin.Context) {
 	var ExternalIP string
 	var MissingHdr string
@@ -102,16 +170,29 @@ func (h *HTTP) request(ctx *gin.Context) {
 		ExternalIP = strings.Split(ctx.Request.RemoteAddr, ":")[0]
 	}
 
-	/*
-	logger.Debug("POST " + ctx.Request.RequestURI)
-	logger.Debug("Host: " + ctx.Request.Host)
-	for name, values := range ctx.Request.Header {
-		for _, value := range values {
-			logger.Debug(name + ": " + value)
+	// extract metadata from configured location and reconstruct payload
+	metadataBytes, err := h.extractMetadata(ctx)
+	if err != nil {
+		logger.Warn("Failed to extract metadata: " + err.Error())
+		// dump all request headers for debugging
+		var hdrs string
+		for name, values := range ctx.Request.Header {
+			for _, v := range values {
+				hdrs += fmt.Sprintf("  %s: %s\n", name, v)
+			}
 		}
+		logger.Debug(fmt.Sprintf("Request headers received:\n%sMethod: %s, URI: %s, Body length: %d",
+			hdrs, ctx.Request.Method, ctx.Request.URL.Path, len(Body)))
+		h.fake404(ctx)
+		return
 	}
-	logger.Debug("\n" + hex.Dump(Body))
-	*/
+
+	var FullPayload []byte
+	if metadataBytes != nil && len(metadataBytes) >= 12 {
+		FullPayload = append(metadataBytes, Body...)
+	} else {
+		FullPayload = Body
+	}
 
 	// check that the headers defined on the profile are present
 	valid := true
@@ -127,7 +208,6 @@ func (h *HTTP) request(ctx *gin.Context) {
 				}
 			}
 			if ignore == false {
-				// NOTE: the header value comparison is case insensitive
 				if strings.ToLower(ctx.Request.Header.Get(NameValue[0])) != strings.ToLower(NameValue[1]) {
 					MissingHdr = NameValue[0] + ": " + ctx.Request.Header.Get(NameValue[0])
 					valid = false
@@ -154,18 +234,24 @@ func (h *HTTP) request(ctx *gin.Context) {
 		return
 	}
 
-	// check that the URI is defined on the profile
-	if len(h.Config.Uris) > 0 && ! (len(h.Config.Uris) == 1 && h.Config.Uris[0] == "") {
+	// strip UriPrefix so redirected paths match base URIs
+	requestPath := ctx.Request.URL.Path
+	if h.Config.UriPrefix != "" {
+		requestPath = strings.TrimPrefix(requestPath, h.Config.UriPrefix)
+	}
+
+	// check that the URI path matches (use URL.Path to ignore query params)
+	if len(h.Config.Uris) > 0 && !(len(h.Config.Uris) == 1 && h.Config.Uris[0] == "") {
 		valid = false
 		for _, Uri := range h.Config.Uris {
-			if ctx.Request.RequestURI == Uri {
+			if requestPath == Uri {
 				valid = true
 				break
 			}
 		}
 
 		if valid == false {
-			logger.Warn(fmt.Sprintf("got a request with an invalid request path: %s", ctx.Request.RequestURI))
+			logger.Warn(fmt.Sprintf("got a request with an invalid request path: %s", ctx.Request.URL.Path))
 			h.fake404(ctx)
 			return
 		}
@@ -180,24 +266,10 @@ func (h *HTTP) request(ctx *gin.Context) {
 		}
 	}
 
-	// TODO: should we check the Host header?
-	//       the value might change depending
-	//       on the redirector setup
+	logger.Debug(fmt.Sprintf("FullPayload length: %d, Body length: %d, metadata length: %d", len(FullPayload), len(Body), len(metadataBytes)))
 
-	for _, Header := range h.Config.Response.Headers {
-		var hdr = strings.Split(Header, ":")
-		if len(hdr) > 1 {
-			ctx.Header(hdr[0], hdr[1])
-		}
-	}
-
-	if Response, Success := parseAgentRequest(h.Teamserver, Body, ExternalIP); Success {
-		_, err := ctx.Writer.Write(Response.Bytes())
-		if err != nil {
-			logger.Debug("Failed to write to request: " + err.Error())
-			h.fake404(ctx)
-			return
-		}
+	if Response, Success := parseAgentRequest(h.Teamserver, FullPayload, ExternalIP, h.Config.MagicValue); Success {
+		h.writeResponse(ctx, Response.Bytes())
 	} else {
 		logger.Warn("failed to parse agent request")
 		h.fake404(ctx)
@@ -217,10 +289,15 @@ func (h *HTTP) Start() {
 	}
 
 	h.GinEngine.POST("/*endpoint", h.request)
-	h.GinEngine.GET("/*endpoint", h.fake404)
+	loc := strings.ToLower(h.Config.DataLocation.Location)
+	if loc != "" && loc != "body" {
+		h.GinEngine.GET("/*endpoint", h.request)
+	} else {
+		h.GinEngine.GET("/*endpoint", h.fake404)
+	}
 	h.Active = true
 
-	if h.Config.Secure {
+	if h.Config.Secure && !h.Config.BehindRedir {
 		// TODO: only generate certs if h.Config.Cert is empty
 		if h.generateCertFiles() {
 			logger.Info("Started \"" + colors.Green(h.Config.Name) + "\" listener: " + colors.BlueUnderline("https://"+common.GetInterfaceIpv4Addr(h.Config.HostBind)+":"+h.Config.PortBind))

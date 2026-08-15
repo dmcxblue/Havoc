@@ -1,6 +1,11 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 
+#define PY_SSIZE_T_CLEAN
+#undef slots
+#include <Python.h>
+#define slots Q_SLOTS
+
 #include <Havoc/DemonCmdDispatch.h>
 
 #include <UserInterface/Widgets/DemonInteracted.h>
@@ -46,6 +51,7 @@ void DispatchOutput::MessageOutput( QString JsonString, const QString& Date = ""
     {
         if ( HavocX::callbackMessage )
         {
+            PyGILState_STATE gilState = PyGILState_Ensure();
             PyObject *arglist = Py_BuildValue( "s", Output.toUtf8().constData() );
             if ( arglist )
             {
@@ -62,6 +68,7 @@ void DispatchOutput::MessageOutput( QString JsonString, const QString& Date = ""
             }
             Py_XDECREF( HavocX::callbackMessage );
             HavocX::callbackMessage = NULL;
+            PyGILState_Release( gilState );
         }
         this->DemonCommandInstance->DemonConsole->AppendRaw( Output );
     }

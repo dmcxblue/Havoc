@@ -2,7 +2,6 @@ package db
 
 import (
 	"errors"
-	"log"
 )
 
 func (db *DB) ListenerAdd(Name, Protocol, Config string) error {
@@ -116,7 +115,7 @@ func (db *DB) ListenerCount() int {
 
 	for query.Next() {
 		if err = query.Scan(&Count); err != nil {
-			log.Fatal(err)
+			return 0
 		}
 	}
 
@@ -165,4 +164,15 @@ func (db *DB) ListenerRemove(Name string) error {
 	}
 
 	return nil
+}
+
+func (db *DB) ListenerUpdate(Name, Protocol, Config string) error {
+	stmt, err := db.db.Prepare("UPDATE TS_Listeners SET Protocol = ?, Config = ? WHERE Name = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(Protocol, Config, Name)
+	return err
 }

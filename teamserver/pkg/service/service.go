@@ -63,7 +63,9 @@ func (s *Service) handleConnection(socket *websocket.Conn) {
 	}
 
 	// now add the new connected client
+	s.clientsMtx.Lock()
 	s.clients = append(s.clients, client)
+	s.clientsMtx.Unlock()
 
 	// dispatch incoming events
 	s.routine(client)
@@ -195,7 +197,9 @@ func (s *Service) dispatch(response map[string]map[string]any, client *ClientSer
 
 		as.service = s
 
+		s.AgentsMtx.Lock()
 		s.Agents = append(s.Agents, as)
+		s.AgentsMtx.Unlock()
 
 		logger.Info(fmt.Sprintf("%v registered a new agent %v", "["+colors.BoldWhite("SERVICE")+"]", "[Name: "+colors.Blue(as.Name)+"]"))
 
@@ -353,7 +357,12 @@ func (s *Service) dispatch(response map[string]map[string]any, client *ClientSer
 			}
 
 			logger.Debug(s.clients)
-			for _, c := range s.clients {
+			s.clientsMtx.Lock()
+			clientsCopy := make([]*ClientService, len(s.clients))
+			copy(clientsCopy, s.clients)
+			s.clientsMtx.Unlock()
+
+			for _, c := range clientsCopy {
 
 				if channel, ok := c.Responses[RandID]; ok {
 
@@ -701,6 +710,9 @@ func (s *Service) dispatch(response map[string]map[string]any, client *ClientSer
 }
 
 func (s *Service) AgentExist(name string) bool {
+	s.AgentsMtx.Lock()
+	defer s.AgentsMtx.Unlock()
+
 	for _, a := range s.Agents {
 		if a.Name == name {
 			return true
@@ -716,10 +728,14 @@ func (s *Service) ClientClose(client *ClientService) {
 		return
 	}
 
+	s.clientsMtx.Lock()
+	defer s.clientsMtx.Unlock()
+
 	for i := range s.clients {
 		if s.clients[i] == client {
 
 			// remove registered agents
+			s.AgentsMtx.Lock()
 			for j := range s.Agents {
 				if s.Agents[j] != nil {
 					if s.Agents[j].client == client {
@@ -731,6 +747,7 @@ func (s *Service) ClientClose(client *ClientService) {
 					}
 				}
 			}
+			s.AgentsMtx.Unlock()
 
 			// remove registered listeners
 			for j := range s.Listeners {
@@ -755,6 +772,7 @@ func (s *Service) ClientClose(client *ClientService) {
 
 			// remove from list
 			s.clients = append(s.clients[:i], s.clients[i+1:]...)
+			return
 		}
 	}
 

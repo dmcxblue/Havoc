@@ -153,6 +153,9 @@ PyObject* PythonAPI::Havoc::Core::GeneratePayload( PyObject *self, PyObject *arg
         PyErr_SetString(PyExc_TypeError, "parameter must be callable");
         return NULL;
     }
+    Py_INCREF(callbackGate);
+    if (HavocX::callbackGate)
+        Py_DECREF(HavocX::callbackGate);
     HavocX::callbackGate = callbackGate;
 
     auto Package = new Util::Packager::Package;

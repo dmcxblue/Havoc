@@ -34,6 +34,11 @@ public:
     bool RemoveScript( QString Path );
     bool CheckScript( QString Path );
     vector<QString> GetScripts();
+
+    bool AddHiddenSession( const QString& TeamserverName, const QString& SessionID );
+    bool RemoveHiddenSession( const QString& TeamserverName, const QString& SessionID );
+    bool IsSessionHidden( const QString& TeamserverName, const QString& SessionID );
+    vector<QString> GetHiddenSessions( const QString& TeamserverName );
 };
 
 #endif

@@ -76,11 +76,16 @@ PyTypeObject PyLoggerClass_Type = {
 
 void LoggerClass_dealloc( PPyLoggerClass self )
 {
-    Py_XDECREF( self->title );
-    delete self->LoggerWindow->window;
-    free(self->LoggerWindow);
-
-    Py_TYPE( self )->tp_free( ( PyObject* ) self );
+    if (self) {
+        if (self->title)
+            Py_XDECREF( self->title );
+        if (self->LoggerWindow) {
+            if (self->LoggerWindow->window)
+                delete self->LoggerWindow->window;
+            free(self->LoggerWindow);
+        }
+        Py_TYPE( self )->tp_free( ( PyObject* ) self );
+    }
 }
 
 PyObject* LoggerClass_new( PyTypeObject *type, PyObject *args, PyObject *kwds )

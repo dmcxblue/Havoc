@@ -5,6 +5,7 @@ import (
     "net/http"
     "strings"
 
+    "Havoc/pkg/agent"
     "Havoc/pkg/colors"
     "Havoc/pkg/logger"
     "encoding/hex"
@@ -47,7 +48,7 @@ func (e *External) Request(ctx *gin.Context) {
 
     ExternalIP := strings.Split(ctx.Request.RemoteAddr, ":")[0]
 
-    if Response, Success := parseAgentRequest(e.Teamserver, Body, ExternalIP); Success {
+    if Response, Success := parseAgentRequest(e.Teamserver, Body, ExternalIP, agent.DEMON_MAGIC_VALUE); Success {
         _, err := ctx.Writer.Write(Response.Bytes())
         if err != nil {
             logger.Debug("Failed to write to request: " + err.Error())
