@@ -221,22 +221,26 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
     auto IsDemonAgent  = false;
     auto AgentData     = ServiceAgent();
 
-    // check if it's a generic demon or 3rd party agent
-
-    if ( MagicValue == DemonMagicValue )
+    // check if it's a generic demon or 3rd party agent.
+    // Match registered ServiceAgents first, then default to Demon for anything
+    // else — the demon's Magic is profile-configurable (e.g. 0xFEEDFACE), so a
+    // hardcoded comparison against 0xDEADBEEF would silently no-op every
+    // built-in command (help, sleep, checkin, ...) whenever the profile
+    // overrides the default.
+    bool foundServiceAgent = false;
+    for ( auto& agent : HavocX::Teamserver.ServiceAgents )
+    {
+        if ( MagicValue == agent.MagicValue )
+        {
+            AgentData     = agent;
+            AgentTypeName = agent.Name;
+            foundServiceAgent = true;
+            break;
+        }
+    }
+    if ( ! foundServiceAgent )
     {
         IsDemonAgent = true;
-    }
-    else
-    {
-        for ( auto& agent : HavocX::Teamserver.ServiceAgents )
-        {
-            if ( MagicValue == agent.MagicValue )
-            {
-                AgentData = agent;
-                AgentTypeName = agent.Name;
-            }
-        }
     }
 
     if ( IsDemonAgent )
