@@ -330,20 +330,7 @@ func (t *Teamserver) Start() {
 				}
 			}
 
-			// parse Magic value from Demon config (default 0xDEADBEEF)
-			HandlerData.MagicValue = agent.DEMON_MAGIC_VALUE
-			if t.Profile.Config.Demon.Magic != "" {
-				magic := t.Profile.Config.Demon.Magic
-				if strings.HasPrefix(magic, "0x") || strings.HasPrefix(magic, "0X") {
-					magic = magic[2:]
-				}
-				if val, err := strconv.ParseUint(magic, 16, 32); err == nil {
-					HandlerData.MagicValue = uint32(val)
-				} else {
-					logger.Error("Invalid Magic value '" + t.Profile.Config.Demon.Magic + "' — must be a hex value (e.g., 0xDEADBEEF)")
-					return
-				}
-			}
+			HandlerData.MagicValue = t.ProfileMagic()
 
 			if err := t.ListenerStart(handlers.LISTENER_HTTP, HandlerData); err != nil {
 				logger.Error("Failed to start listener from profile: " + err.Error())
@@ -380,8 +367,9 @@ func (t *Teamserver) Start() {
 		/* Start all ExternalC2 listeners */
 		for _, listener := range t.Profile.Config.Listener.ListenerExternal {
 			var HandlerData = handlers.ExternalConfig{
-				Name:     listener.Name,
-				Endpoint: listener.Endpoint,
+				Name:       listener.Name,
+				Endpoint:   listener.Endpoint,
+				MagicValue: t.ProfileMagic(),
 			}
 
 			if err := t.ListenerStart(handlers.LISTENER_EXTERNAL, HandlerData); err != nil {
@@ -506,17 +494,7 @@ func (t *Teamserver) Start() {
 				}
 			}
 
-			// restore Magic value from Demon config (default 0xDEADBEEF)
-			HandlerData.MagicValue = agent.DEMON_MAGIC_VALUE
-			if t.Profile.Config.Demon.Magic != "" {
-				magic := t.Profile.Config.Demon.Magic
-				if strings.HasPrefix(magic, "0x") || strings.HasPrefix(magic, "0X") {
-					magic = magic[2:]
-				}
-				if val, err := strconv.ParseUint(magic, 16, 32); err == nil {
-					HandlerData.MagicValue = uint32(val)
-				}
-			}
+			HandlerData.MagicValue = t.ProfileMagic()
 
 			/* also ignore if we already have a listener running */
 			if err := t.ListenerStart(handlers.LISTENER_HTTP, HandlerData); err != nil && err.Error() != "listener already exists" {
@@ -532,7 +510,8 @@ func (t *Teamserver) Start() {
 			var (
 				Data        = make(map[string]any)
 				HandlerData = handlers.ExternalConfig{
-					Name: listener["Name"],
+					Name:       listener["Name"],
+					MagicValue: t.ProfileMagic(),
 				}
 			)
 
@@ -759,6 +738,21 @@ func (t *Teamserver) handleRequest(id string) {
 		t.EventAppend(pk)
 		t.DispatchEvent(pk)
 	}
+}
+
+// ProfileMagic returns the profile-configured Demon Magic value, falling back
+// to agent.DEMON_MAGIC_VALUE when the profile does not override it. Callers
+// that need to gate a listener or match an agent's Magic should use this so
+// the value is consistent across HTTP, External, SMB, and DB restore paths.
+func (t *Teamserver) ProfileMagic() uint32 {
+	if t.Profile == nil || t.Profile.Config.Demon == nil || t.Profile.Config.Demon.Magic == "" {
+		return agent.DEMON_MAGIC_VALUE
+	}
+	magic := strings.TrimPrefix(strings.TrimPrefix(t.Profile.Config.Demon.Magic, "0x"), "0X")
+	if val, err := strconv.ParseUint(magic, 16, 32); err == nil {
+		return uint32(val)
+	}
+	return agent.DEMON_MAGIC_VALUE
 }
 
 func (t *Teamserver) SetProfile(path string) {

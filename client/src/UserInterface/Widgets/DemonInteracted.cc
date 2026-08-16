@@ -152,7 +152,7 @@ void DemonInteracted::setupUi( QWidget *Form )
     label->setStyleSheet("padding-bottom: 3px;"
                          "padding-left: 5px;");
 
-    if ( SessionInfo.MagicValue == DemonMagicValue )
+    if ( IsDemonAgent( SessionInfo.MagicValue ) )
     {
         for ( auto& i : HavocSpace::DemonCommands::DemonCommandList )
         {
@@ -225,7 +225,7 @@ void DemonInteracted::AppendFromInput()
 
 void DemonInteracted::AppendText( const QString& text )
 {
-    if ( SessionInfo.MagicValue != DemonMagicValue )
+    if ( IsServiceAgent( SessionInfo.MagicValue ) )
     {
         for ( auto& agent : HavocX::Teamserver.ServiceAgents )
         {
@@ -252,7 +252,7 @@ void DemonInteracted::AppendText( const QString& text )
         auto AgentData   = ServiceAgent();
         auto HelpCommand = false;
 
-        if ( DemonCommands->MagicValue != DemonMagicValue )
+        if ( IsServiceAgent( DemonCommands->MagicValue ) )
         {
             for ( auto& agent : HavocX::Teamserver.ServiceAgents )
             {

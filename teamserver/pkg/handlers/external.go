@@ -48,7 +48,11 @@ func (e *External) Request(ctx *gin.Context) {
 
     ExternalIP := strings.Split(ctx.Request.RemoteAddr, ":")[0]
 
-    if Response, Success := parseAgentRequest(e.Teamserver, Body, ExternalIP, agent.DEMON_MAGIC_VALUE); Success {
+    magic := e.Config.MagicValue
+    if magic == 0 {
+        magic = agent.DEMON_MAGIC_VALUE
+    }
+    if Response, Success := parseAgentRequest(e.Teamserver, Body, ExternalIP, magic); Success {
         _, err := ctx.Writer.Write(Response.Bytes())
         if err != nil {
             logger.Debug("Failed to write to request: " + err.Error())

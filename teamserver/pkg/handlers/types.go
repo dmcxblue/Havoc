@@ -58,8 +58,9 @@ type (
 	}
 
 	ExternalConfig struct {
-		Name     string
-		Endpoint string
+		Name       string
+		Endpoint   string
+		MagicValue uint32
 	}
 
 	SMBConfig struct {

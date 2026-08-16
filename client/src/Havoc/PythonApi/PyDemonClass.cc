@@ -148,7 +148,7 @@ int DemonClass_init( PPyDemonClass self, PyObject *args, PyObject *kwds )
         if ( DemonSessions[ i ].Name.compare( DemonID ) == 0 )
         {
             /* seems like we are trying to use an 3rd party agent. */
-            if ( DemonSessions[ i ].MagicValue != DemonMagicValue )
+            if ( IsServiceAgent( DemonSessions[ i ].MagicValue ) )
             {
                 spdlog::error( "[PyError] specified id is not a demon agent" );
                 PyErr_SetString( PyExc_TypeError, "specified id is not a demon agent" );

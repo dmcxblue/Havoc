@@ -360,8 +360,9 @@ func (t *Teamserver) ListenerServiceExc2Add(Name, ExEndpoint string, client *ser
 
 	var (
 		Config = handlers.ExternalConfig{
-			Name:     Name,
-			Endpoint: ExEndpoint,
+			Name:       Name,
+			Endpoint:   ExEndpoint,
+			MagicValue: t.ProfileMagic(),
 		}
 
 		ExtConfig *handlers.External

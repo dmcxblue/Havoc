@@ -47,4 +47,12 @@ typedef struct
 
 extern uint64_t DemonMagicValue;
 
+// A session's Magic identifies its agent kind. Registered 3rd-party
+// ServiceAgents claim specific Magic values; anything else is treated as a
+// native Demon. The default Demon Magic is 0xDEADBEEF, but a profile can
+// override it (e.g. amazon.yaotl uses 0xFEEDFACE), so we cannot compare
+// against DemonMagicValue directly — use these helpers instead.
+bool IsDemonAgent( uint64_t magic );
+bool IsServiceAgent( uint64_t magic );
+
 #endif

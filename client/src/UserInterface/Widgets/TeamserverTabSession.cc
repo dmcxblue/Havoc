@@ -236,7 +236,7 @@ void UserInterface::Widgets::TeamserverTabSession::handleDemonContextMenu( const
     SessionMenu.addAction( "Interact" );
     SessionMenu.addAction( separator );
 
-    if ( Agent.MagicValue == DemonMagicValue )
+    if ( IsDemonAgent( Agent.MagicValue ) )
     {
         SessionMenu.addAction( SessionExplorer.menuAction() );
         SessionMenu.addAction( separator2 );
@@ -253,7 +253,7 @@ void UserInterface::Widgets::TeamserverTabSession::handleDemonContextMenu( const
     SessionMenu.addAction( separator3 );
     SessionMenu.addAction( "Remove" );
 
-    if ( Agent.MagicValue == DemonMagicValue )
+    if ( IsDemonAgent( Agent.MagicValue ) )
     {
         SessionMenu.addAction( ExitMenu.menuAction() );
     }
@@ -440,7 +440,7 @@ void UserInterface::Widgets::TeamserverTabSession::handleDemonContextMenu( const
                     Session.InteractedWidget->AppendText( "exit " + action->text().toLower() );
                 }
 
-                if ( Session.MagicValue == DemonMagicValue )
+                if ( IsDemonAgent( Session.MagicValue ) )
                 {
                     if ( action->text().compare( "Process List" ) == 0 )
                     {

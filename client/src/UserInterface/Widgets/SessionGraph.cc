@@ -621,7 +621,7 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
     SessionMenu.addAction( "Interact" );
     SessionMenu.addAction( separator );
 
-    if ( Agent.MagicValue == DemonMagicValue )
+    if ( IsDemonAgent( Agent.MagicValue ) )
     {
         SessionMenu.addAction( SessionExplorer.menuAction() );
         SessionMenu.addAction( separator2 );
@@ -636,7 +636,7 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
     SessionMenu.addAction( separator3 );
     SessionMenu.addAction( "Remove" );
 
-    if ( Agent.MagicValue == DemonMagicValue )
+    if ( IsDemonAgent( Agent.MagicValue ) )
     {
         auto ExitMenu = QMenu( "Exit" );
 
@@ -801,7 +801,7 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
                 {
                     Session.InteractedWidget->DemonCommands->Execute.Exit( Util::gen_random( 8 ).c_str(), action->text().toLower() );
                 }
-                if ( Session.MagicValue == DemonMagicValue )
+                if ( IsDemonAgent( Session.MagicValue ) )
                 {
                     if ( action->text().compare( "Process List" ) == 0 )
                     {
