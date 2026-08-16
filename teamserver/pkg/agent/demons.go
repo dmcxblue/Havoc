@@ -5213,7 +5213,10 @@ func (a *Agent) TaskDispatch(RequestID uint32, CommandID uint32, Parser *parser.
 							// parse the agent header
 							if AgentHdr, err = ParseHeader(DemonData); err == nil {
 
-								if AgentHdr.MagicValue == DEMON_MAGIC_VALUE {
+								// Profile-overridden Demon Magic (e.g. 0xFEEDFACE) means
+								// we cannot compare against the DEMON_MAGIC_VALUE constant;
+								// anything not claimed by a registered ServiceAgent is a demon.
+								if !teamserver.ServiceAgentExist(AgentHdr.MagicValue) {
 									// ignore the RequestID
 									AgentHdr.Data.ParseInt32()
 									// ignore the CommandID
@@ -5353,7 +5356,8 @@ func (a *Agent) TaskDispatch(RequestID uint32, CommandID uint32, Parser *parser.
 
 					if err == nil {
 
-						if AgentHdr.MagicValue == DEMON_MAGIC_VALUE {
+						// See comment above on profile-configurable Demon Magic.
+						if !teamserver.ServiceAgentExist(AgentHdr.MagicValue) {
 							var PivotAgent *Agent
 
 							PivotAgent = teamserver.AgentInstance(AgentHdr.AgentID)

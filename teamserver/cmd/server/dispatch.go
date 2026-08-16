@@ -74,8 +74,13 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 				return
 			}
 
-			// handle demon session input
-			if targetAgent.Info.MagicValue == agent.DEMON_MAGIC_VALUE {
+			// handle demon session input. The demon's Magic is profile-configurable
+			// (e.g. amazon.yaotl sets 0xFEEDFACE), so we cannot compare against
+			// the DEMON_MAGIC_VALUE constant — treat any Magic that isn't a
+			// registered ServiceAgent as a demon. Otherwise commands from
+			// custom-Magic demons would be silently dropped here with no queue,
+			// no output, and no error propagated back to the client.
+			if !t.ServiceAgentExist(targetAgent.Info.MagicValue) {
 
 				var (
 					Message = new(map[string]string)
