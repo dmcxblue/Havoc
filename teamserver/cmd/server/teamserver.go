@@ -564,9 +564,15 @@ func (t *Teamserver) Start() {
 
 	}
 
-	// load all existing Agents from the DB
+	// load all existing Agents from the DB. The DB layer doesn't know the
+	// profile Magic, so restored agents get DEMON_MAGIC_VALUE as a placeholder
+	// — overwrite with the profile-configured Magic so the cached value is
+	// consistent with what the real agent will report on its next check-in,
+	// and so any code that inspects it before then sees the right value.
+	restoredMagic := int(t.ProfileMagic())
 	Agents := t.DB.AgentAll()
 	for _, Agent := range Agents {
+		Agent.Info.MagicValue = restoredMagic
 		t.AgentAdd(Agent)
 	}
 
