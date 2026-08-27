@@ -516,10 +516,14 @@ void LiveDesktopWidget::onDeskDisconnected()
 }
 
 // Convert the accumulated BGR bottom-up framebuffer to a displayable QPixmap.
-// Row flip is done manually (memcpy rows in reverse) because QImage::mirrored()
-// introduces a diagonal lean on certain widths due to an internal stride mismatch.
-// BGR→RGB channel swap is explicit per-pixel into Format_RGB32 (32-bit, always
-// DWORD-aligned) to avoid Format_BGR888 color artifacts on some Qt builds.
+// Row flip is done manually because QImage::mirrored() introduces a diagonal
+// lean on certain widths due to an internal stride mismatch.
+// BGR→RGB is explicit per-pixel into Format_RGB32 (always DWORD-aligned) to
+// avoid Format_BGR888 colour artefacts on some Qt builds.
+//
+// Capture-side colour: the shellcode must CROP 1-3 px to DWORD-align 24-bpp
+// rows. StretchBlt+HALFTONE on that tiny "resize" dithers the whole frame
+// and is what made the live view look "almost the right colour".
 // On frame #1 the raw decompressed data is saved as /tmp/livedesktop_debug.bmp
 // for offline verification — the BMP is the exact bytes from LZNT1, no Qt processing.
 void LiveDesktopWidget::onRenderTick()
@@ -579,7 +583,7 @@ void LiveDesktopWidget::onRenderTick()
 
     QSize viewSize = scrollArea->viewport()->size();
     if ( pm.width() > viewSize.width() || pm.height() > viewSize.height() )
-        pm = pm.scaled( viewSize, Qt::KeepAspectRatio, Qt::SmoothTransformation );
+        pm = pm.scaled( viewSize, Qt::KeepAspectRatio, Qt::FastTransformation );
 
     labelView->setPixmap( pm );
     int ds = lastDecompSize;
