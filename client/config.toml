@@ -18,5 +18,10 @@ files = [
   "client/Modules/nanorobeus/nanorobeus.py",
   "client/Modules/Bofbelt/bofbelt.py",
   "client/Modules/SamDump/samdump.py",
-  "client/Modules/NoConsolation/no-consolation.py"
+  "client/Modules/NoConsolation/no-consolation.py",
+  "client/Modules/LiveDesktop/livedesktop.py",
+  "client/Modules/Keylogger/keylogger.py",
+  "client/Modules/Clipboard/clipboard.py",
+  "client/Modules/PrivKit/privkit.py",
+  "client/Modules/Icacls/icacls.py"
 ]

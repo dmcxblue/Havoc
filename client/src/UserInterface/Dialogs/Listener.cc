@@ -818,15 +818,15 @@ void HavocNamespace::UserInterface::Dialogs::NewListener::onButton_Save()
 {
     auto Payload = ComboPayload->currentText();
 
+    if ( InputListenerName->text().isEmpty() )
+    {
+        MessageBox( "Listener Error", "No Listener Name specified", QMessageBox::Critical );
+        return;
+    }
+
     if ( ( Payload.compare( HavocSpace::Listener::PayloadHTTPS ) == 0 ) ||
          ( Payload.compare( HavocSpace::Listener::PayloadHTTP  ) == 0 ) )
     {
-        if ( InputListenerName->text().isEmpty() )
-        {
-            MessageBox( "Listener Error", "No Listener Name specified", QMessageBox::Critical );
-
-            return;
-        }
 
         if ( InputPortBind->text().isEmpty() )
         {

@@ -33,8 +33,13 @@ havoc
 # ignore data directory
 data/
 
-# ignore client directories
-client/Modules/
+# ignore upstream modules cloned at build time, but track custom ones
+client/Modules/*
+!client/Modules/Clipboard/
+!client/Modules/Keylogger/
+!client/Modules/Icacls/
+!client/Modules/PrivKit/
+!client/Modules/LiveDesktop/
 
 # OS files
 .DS_Store

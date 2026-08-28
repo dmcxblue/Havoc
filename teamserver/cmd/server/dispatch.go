@@ -508,7 +508,7 @@ func (t *Teamserver) DispatchEvent(pk packager.Package) {
 
 				SmdConfig.PipeName, found = pk.Body.Info["PipeName"].(string)
 				if !found {
-					SmdConfig.Name = ""
+					SmdConfig.PipeName = ""
 				}
 
 				if err := t.ListenerStart(handlers.LISTENER_PIVOT_SMB, SmdConfig); err != nil {

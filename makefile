@@ -35,6 +35,7 @@ client-build:
 	@ if [ -d "client/Modules" ]; then echo "Modules installed"; else BRANCH=`git rev-parse --abbrev-ref HEAD`; git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch "$$BRANCH" || git clone --recurse-submodules https://github.com/HavocFramework/Modules client/Modules --single-branch --branch main; fi
 	@ if [ -f "client/Modules/nanodump/nanodump.py" ]; then sed -i 's|C:\\Windows\\notepad.exe|C:\\\\Windows\\\\notepad.exe|g' client/Modules/nanodump/nanodump.py; fi
 	@ cmake --build client/Build -- -j 4
+	@ $(MAKE) bof-build
 
 client-build-mac:
 	@ echo "[*] building client"
@@ -44,6 +45,7 @@ client-build-mac:
 	@ if [ -f "client/Modules/nanodump/nanodump.py" ]; then sed -i 's|C:\\Windows\\notepad.exe|C:\\\\Windows\\\\notepad.exe|g' client/Modules/nanodump/nanodump.py; fi
 	@ rm client/external/toml/toml/exception.hpp ; cp exception_mac.hpp client/external/toml/toml/exception.hpp
 	@ cmake --build client/Build -- -j 4
+	@ $(MAKE) bof-build
 
 client-cleanup:
 	@ echo "[*] client cleanup"
@@ -54,10 +56,50 @@ client-cleanup:
 	@ rm -rf ./client/.idea
 	@ rm -rf ./client/cmake-build-debug
 	@ rm -rf ./client/Havoc
-	@ rm -rf ./client/Modules
 
 
-# cleanup target 
+MINGW_CC = x86_64-w64-mingw32-gcc
+
+# custom BOF modules — compiled on every client-build
+bof-build:
+	@ echo "[*] compiling custom BOF modules"
+	@ mkdir -p client/Modules/PrivKit/bin
+	@ if [ -f client/Modules/PrivKit/repo/src/PrivKitAll/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/PrivKit/bin/PrivKitAll.x64.o \
+			-c client/Modules/PrivKit/repo/src/PrivKitAll/entry.c \
+			-DBOF -I client/Modules/PrivKit/repo/src/common -fno-builtin && \
+		echo "  -> PrivKit OK"; \
+	fi
+	@ mkdir -p client/Modules/Icacls/bin
+	@ if [ -f client/Modules/Icacls/src/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/Icacls/bin/icacls.x64.o \
+			-c client/Modules/Icacls/src/entry.c \
+			-DBOF -fno-builtin && \
+		echo "  -> Icacls OK"; \
+	fi
+	@ mkdir -p client/Modules/Clipboard/bin
+	@ if [ -f client/Modules/Clipboard/src/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/Clipboard/bin/clipboard.x64.o \
+			-c client/Modules/Clipboard/src/entry.c \
+			-DBOF && \
+		echo "  -> Clipboard OK"; \
+	fi
+	@ mkdir -p client/Modules/Keylogger/bin
+	@ if [ -f client/Modules/Keylogger/src/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/Keylogger/bin/keylogger.x64.o \
+			-c client/Modules/Keylogger/src/entry.c \
+			-DBOF && \
+		echo "  -> Keylogger OK"; \
+	fi
+	@ mkdir -p client/Modules/LiveDesktop/bin
+	@ if [ -f client/Modules/LiveDesktop/src/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/LiveDesktop/bin/livedesktop.x64.o \
+			-c client/Modules/LiveDesktop/src/entry.c \
+			-DBOF -fno-builtin && \
+		echo "  -> LiveDesktop OK"; \
+	fi
+
+# cleanup target
 clean: ts-cleanup client-cleanup
 	@ rm -rf ./data/*.db
 	@ rm -rf payloads/Demon/.idea
