@@ -524,6 +524,8 @@ WINBASEAPI WINBOOL WINAPI ADVAPI32$SystemFunction036(PVOID RandomBuffer,ULONG Ra
 #endif
 #define RtlGenRandom ADVAPI32$SystemFunction036
 
+#define memcpy MSVCRT$memcpy
+#define memset MSVCRT$memset
 
 #else
 //KERNEL32
