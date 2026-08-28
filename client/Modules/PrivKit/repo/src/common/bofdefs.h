@@ -114,7 +114,7 @@ DECLSPEC_IMPORT void    BeaconOutput(int, char*, int);
 
 /* ---- bofstart / printoutput / bofstop ---- */
 
-#define BUFFER_SIZE 8192
+#define BUFFER_SIZE 65536
 
 char  _bof_internal_buffer[BUFFER_SIZE];
 int   _bof_internal_offset = 0;
