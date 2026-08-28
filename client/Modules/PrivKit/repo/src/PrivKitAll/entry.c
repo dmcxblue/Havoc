@@ -55,70 +55,71 @@ void CheckAlwaysInstallElevated(void)
 }
 
 /* =========================================================
-   2. Unquoted Service Paths
+   2. Unquoted Service Paths (registry-based, matches mertdas/PrivKit)
    ========================================================= */
 void CheckUnquotedServicePaths(void)
 {
     internal_printf("\n=== [2/10] Unquoted Service Paths ===\n");
-    SC_HANDLE hSCM = ADVAPI32$OpenSCManagerA(NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE);
-    if (!hSCM) {
-        internal_printf("  [-] Cannot open SCM\n");
+
+    HKEY hServices = NULL;
+    if (ADVAPI32$RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+        "SYSTEM\\CurrentControlSet\\Services",
+        0, KEY_READ, &hServices) != ERROR_SUCCESS)
+    {
+        internal_printf("  [-] Cannot open Services registry key\n");
         return;
     }
 
-    DWORD needed = 0, count = 0, resume = 0;
-    ADVAPI32$EnumServicesStatusA(hSCM, SERVICE_WIN32, SERVICE_STATE_ALL,
-        NULL, 0, &needed, &count, &resume);
-
-    LPBYTE buf = (LPBYTE)KERNEL32$HeapAlloc(KERNEL32$GetProcessHeap(), 0, needed);
-    if (!buf) { ADVAPI32$CloseServiceHandle(hSCM); return; }
-
     int found = 0;
-    if (ADVAPI32$EnumServicesStatusA(hSCM, SERVICE_WIN32, SERVICE_STATE_ALL,
-        (LPENUM_SERVICE_STATUSA)buf, needed, &needed, &count, &resume))
-    {
-        LPENUM_SERVICE_STATUSA svc = (LPENUM_SERVICE_STATUSA)buf;
-        for (DWORD i = 0; i < count; i++)
-        {
-            SC_HANDLE hSvc = ADVAPI32$OpenServiceA(hSCM, svc[i].lpServiceName,
-                SERVICE_QUERY_CONFIG);
-            if (!hSvc) continue;
+    char svcName[256];
+    DWORD svcNameLen;
 
-            DWORD cfgSz = 0;
-            ADVAPI32$QueryServiceConfigA(hSvc, NULL, 0, &cfgSz);
-            LPQUERY_SERVICE_CONFIGA cfg = (LPQUERY_SERVICE_CONFIGA)
-                KERNEL32$HeapAlloc(KERNEL32$GetProcessHeap(), 0, cfgSz);
-            if (cfg && ADVAPI32$QueryServiceConfigA(hSvc, cfg, cfgSz, &cfgSz))
-            {
-                if (cfg->lpBinaryPathName &&
-                    cfg->lpBinaryPathName[0] != '"' &&
-                    MSVCRT$strchr(cfg->lpBinaryPathName, ' ') &&
-                    MSVCRT$_stricmp(cfg->dwStartType == SERVICE_AUTO_START ? "auto" : "", "") == 0 + 1 - 1)
-                {
-                    char *p = cfg->lpBinaryPathName;
-                    if (MSVCRT$_stricmp(p, "") != 0 &&
-                        p[0] != '"' &&
-                        MSVCRT$strchr(p, ' ') != NULL)
-                    {
-                        char upper[4] = {0};
-                        for (int k = 0; k < 3 && p[k]; k++)
-                            upper[k] = (char)MSVCRT$toupper(p[k]);
-                        if (MSVCRT$strcmp(upper, "C:\\") == 0 ||
-                            MSVCRT$strcmp(upper, "D:\\") == 0)
-                        {
-                            internal_printf("  [!] %s -> %s\n",
-                                svc[i].lpServiceName, p);
-                            found++;
-                        }
-                    }
-                }
-            }
-            if (cfg) KERNEL32$HeapFree(KERNEL32$GetProcessHeap(), 0, cfg);
-            ADVAPI32$CloseServiceHandle(hSvc);
+    for (DWORD i = 0; ; i++)
+    {
+        svcNameLen = sizeof(svcName);
+        if (ADVAPI32$RegEnumKeyExA(hServices, i, svcName, &svcNameLen,
+            NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+            break;
+
+        HKEY hSvcKey = NULL;
+        if (ADVAPI32$RegOpenKeyExA(hServices, svcName, 0, KEY_READ, &hSvcKey) != ERROR_SUCCESS)
+            continue;
+
+        char imagePath[1024] = {0};
+        DWORD pathLen = sizeof(imagePath);
+        DWORD pathType = 0;
+
+        if (ADVAPI32$RegQueryValueExA(hSvcKey, "ImagePath", NULL, &pathType,
+            (LPBYTE)imagePath, &pathLen) != ERROR_SUCCESS || !imagePath[0])
+        {
+            ADVAPI32$RegCloseKey(hSvcKey);
+            continue;
         }
+        ADVAPI32$RegCloseKey(hSvcKey);
+
+        if (MSVCRT$strchr(imagePath, '"'))
+            continue;
+
+        if (!MSVCRT$strchr(imagePath, ' '))
+            continue;
+
+        char lower[1024] = {0};
+        for (int j = 0; j < 1023 && imagePath[j]; j++)
+            lower[j] = (char)MSVCRT$tolower(imagePath[j]);
+
+        if (MSVCRT$strstr(lower, "sys"))
+            continue;
+
+        int len = (int)MSVCRT$strlen(lower);
+        if (len >= 4 && MSVCRT$strcmp(lower + len - 4, ".sys") == 0)
+            continue;
+
+        internal_printf("  [!] %s -> %s\n", svcName, imagePath);
+        found++;
     }
-    KERNEL32$HeapFree(KERNEL32$GetProcessHeap(), 0, buf);
-    ADVAPI32$CloseServiceHandle(hSCM);
+
+    ADVAPI32$RegCloseKey(hServices);
+
     if (!found)
         internal_printf("  [-] No unquoted service paths found\n");
 }
