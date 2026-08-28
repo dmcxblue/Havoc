@@ -71,6 +71,9 @@ DECLSPEC_IMPORT int      __cdecl MSVCRT$_snprintf(char*, size_t, const char*, ..
 DECLSPEC_IMPORT int      __cdecl MSVCRT$toupper(int);
 DECLSPEC_IMPORT int      __cdecl MSVCRT$tolower(int);
 DECLSPEC_IMPORT char*    __cdecl MSVCRT$strtok(char*, const char*);
+DECLSPEC_IMPORT void*    __cdecl MSVCRT$calloc(size_t, size_t);
+DECLSPEC_IMPORT void     __cdecl MSVCRT$free(void*);
+DECLSPEC_IMPORT int      __cdecl MSVCRT$_vsnprintf(char*, size_t, const char*, va_list);
 
 /* ---- Beacon Output API ---- */
 
@@ -112,42 +115,72 @@ DECLSPEC_IMPORT void    BeaconFormatInt(formatp*, int);
 DECLSPEC_IMPORT void    BeaconPrintf(int, char*, ...);
 DECLSPEC_IMPORT void    BeaconOutput(int, char*, int);
 
-/* ---- bofstart / printoutput / bofstop ---- */
+/* ---- bofstart / internal_printf / printoutput ---- */
+/* Heap-allocated buffer with auto-flush when full */
 
-#define BUFFER_SIZE 65536
+#define intAlloc(sz)  KERNEL32$HeapAlloc(KERNEL32$GetProcessHeap(), HEAP_ZERO_MEMORY, (sz))
+#define intFree(p)    KERNEL32$HeapFree(KERNEL32$GetProcessHeap(), 0, (p))
 
-char  _bof_internal_buffer[BUFFER_SIZE];
-int   _bof_internal_offset = 0;
+#ifndef BUFFER_SIZE
+#define BUFFER_SIZE 8192
+#endif
 
-DECLSPEC_IMPORT int __cdecl MSVCRT$_vsnprintf(char*, size_t, const char*, va_list);
+static char  *_bof_output  = NULL;
+static int    _bof_offset  = 0;
 
-void internal_printf(const char* fmt, ...)
+static int bofstart(void)
 {
-    va_list args;
-    va_start(args, fmt);
-    int left = BUFFER_SIZE - _bof_internal_offset;
-    if (left > 0) {
-        int written = MSVCRT$_vsnprintf(
-            _bof_internal_buffer + _bof_internal_offset,
-            left, fmt, args);
-        if (written > 0)
-            _bof_internal_offset += written;
-    }
-    va_end(args);
+    _bof_output = (char *)MSVCRT$calloc(BUFFER_SIZE, 1);
+    _bof_offset = 0;
+    return (_bof_output != NULL);
 }
 
-#define bofstart() \
-    ( MSVCRT$memset(_bof_internal_buffer, 0, BUFFER_SIZE), \
-      _bof_internal_offset = 0, \
-      1 )
+static void internal_printf(const char *fmt, ...)
+{
+    if (!_bof_output) return;
+    va_list args;
+    va_start(args, fmt);
+    int need = MSVCRT$_vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+    if (need <= 0) return;
 
-#define printoutput(x) \
-    do { \
-        if (_bof_internal_offset > 0) \
-            BeaconOutput(CALLBACK_OUTPUT, _bof_internal_buffer, _bof_internal_offset); \
-    } while(0)
+    char *tmp = (char *)intAlloc(need + 1);
+    if (!tmp) return;
+    va_start(args, fmt);
+    MSVCRT$_vsnprintf(tmp, need + 1, fmt, args);
+    va_end(args);
 
-#define bofstop() do { } while(0)
+    if (need + _bof_offset < BUFFER_SIZE) {
+        MSVCRT$memcpy(_bof_output + _bof_offset, tmp, need);
+        _bof_offset += need;
+    } else {
+        if (_bof_offset > 0) {
+            BeaconOutput(CALLBACK_OUTPUT, _bof_output, _bof_offset);
+            _bof_offset = 0;
+            MSVCRT$memset(_bof_output, 0, BUFFER_SIZE);
+        }
+        if (need < BUFFER_SIZE) {
+            MSVCRT$memcpy(_bof_output, tmp, need);
+            _bof_offset = need;
+        } else {
+            BeaconOutput(CALLBACK_OUTPUT, tmp, need);
+        }
+    }
+    intFree(tmp);
+}
+
+static void printoutput(int done)
+{
+    if (_bof_output && _bof_offset > 0)
+        BeaconOutput(CALLBACK_OUTPUT, _bof_output, _bof_offset);
+    _bof_offset = 0;
+    if (done && _bof_output) {
+        MSVCRT$free(_bof_output);
+        _bof_output = NULL;
+    }
+}
+
+#define bofstop() printoutput(1)
 
 #endif /* BOF */
 

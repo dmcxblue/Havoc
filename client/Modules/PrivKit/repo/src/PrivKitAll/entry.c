@@ -506,30 +506,38 @@ void CheckUnattendFiles(void)
 }
 
 /* =========================================================
-   BOF Entry Point — all checks in one output block
+   BOF Entry Point
+   arg: 0=all, 1-10=individual check
    ========================================================= */
 #ifdef BOF
 void go(char *args, int alen)
 {
+    datap parser;
+    int   check = 0;
+
+    BeaconDataParse(&parser, args, alen);
+    check = BeaconDataInt(&parser);
+
     if (!bofstart())
         return;
 
-    internal_printf("========== PrivKit Privilege Escalation Audit ==========\n");
+    if (check == 0)
+        internal_printf("========== PrivKit Privilege Escalation Audit ==========\n");
 
-    CheckAlwaysInstallElevated();
-    CheckUnquotedServicePaths();
-    CheckModifiableServices();
-    CheckAutoLogon();
-    CheckScheduledTasks();
-    CheckWritablePath();
-    CheckUACSettings();
-    CheckTokenPrivileges();
-    CheckGPPPasswords();
-    CheckUnattendFiles();
+    if (check == 0 || check == 1)  CheckAlwaysInstallElevated();
+    if (check == 0 || check == 2)  CheckUnquotedServicePaths();
+    if (check == 0 || check == 3)  CheckModifiableServices();
+    if (check == 0 || check == 4)  CheckAutoLogon();
+    if (check == 0 || check == 5)  CheckScheduledTasks();
+    if (check == 0 || check == 6)  CheckWritablePath();
+    if (check == 0 || check == 7)  CheckUACSettings();
+    if (check == 0 || check == 8)  CheckTokenPrivileges();
+    if (check == 0 || check == 9)  CheckGPPPasswords();
+    if (check == 0 || check == 10) CheckUnattendFiles();
 
-    internal_printf("\n========== Audit Complete ==========\n");
+    if (check == 0)
+        internal_printf("\n========== Audit Complete ==========\n");
 
-    printoutput(TRUE);
-    bofstop();
+    printoutput(1);
 }
 #endif
