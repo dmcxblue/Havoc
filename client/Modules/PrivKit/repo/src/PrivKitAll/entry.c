@@ -128,7 +128,7 @@ DWORD UnquotedSVCPathCheck(void)
     BOOL bIsSysDriver = FALSE;
     char c;
 
-    BeaconPrintf(CALLBACK_OUTPUT, "=== Unquoted Service Path Check ===\n\n");
+    internal_printf("=== Unquoted Service Path Check ===\n\n");
 
     lResult = ADVAPI32$RegOpenKeyExA(
         HKEY_LOCAL_MACHINE,
@@ -139,7 +139,7 @@ DWORD UnquotedSVCPathCheck(void)
 
     if (lResult != ERROR_SUCCESS)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] Failed to open Services registry key. Error: %ld\n", lResult);
+        internal_printf("[!] Failed to open Services registry key. Error: %ld\n", lResult);
         dwErrorCode = (DWORD)lResult;
         goto UnquotedSVCPathCheck_end;
     }
@@ -256,21 +256,21 @@ DWORD UnquotedSVCPathCheck(void)
 
         if (bHasSpace && !bHasQuote && !bIsSystem && !bIsSysDriver)
         {
-            BeaconPrintf(CALLBACK_OUTPUT, "[+] VULNERABLE: %s\n", szServiceName);
-            BeaconPrintf(CALLBACK_OUTPUT, "    ImagePath: %s\n\n", szImagePath);
+            internal_printf("[+] VULNERABLE: %s\n", szServiceName);
+            internal_printf("    ImagePath: %s\n\n", szImagePath);
             nFound++;
         }
     }
 
-    BeaconPrintf(CALLBACK_OUTPUT, "[*] Scan complete\n");
+    internal_printf("[*] Scan complete\n");
 
     if (nFound > 0)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[+] VULNERABLE: %d unquoted service path(s) found!\n", nFound);
+        internal_printf("[+] VULNERABLE: %d unquoted service path(s) found!\n", nFound);
     }
     else
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[-] Not Vulnerable: No unquoted service paths found\n");
+        internal_printf("[-] Not Vulnerable: No unquoted service paths found\n");
     }
 
 UnquotedSVCPathCheck_end:
@@ -882,13 +882,13 @@ DWORD HijackablePathCheck(void)
     HANDLE hFile;
     HANDLE hHeap;
 
-    BeaconPrintf(CALLBACK_OUTPUT, "=== Hijackable PATH Check ===\n\n");
+    internal_printf("=== Hijackable PATH Check ===\n\n");
 
     hHeap = KERNEL32$GetProcessHeap();
     szPath = (char*)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, 4096);
     if (szPath == NULL)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] HeapAlloc failed\n");
+        internal_printf("[!] HeapAlloc failed\n");
         return ERROR_NOT_ENOUGH_MEMORY;
     }
 
@@ -901,7 +901,7 @@ DWORD HijackablePathCheck(void)
 
     if (lResult != ERROR_SUCCESS)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] RegOpenKeyExA failed: %ld\n", lResult);
+        internal_printf("[!] RegOpenKeyExA failed: %ld\n", lResult);
         KERNEL32$HeapFree(hHeap, 0, szPath);
         return (DWORD)lResult;
     }
@@ -912,7 +912,7 @@ DWORD HijackablePathCheck(void)
 
     if (lResult != ERROR_SUCCESS)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] RegQueryValueExA failed: %ld\n", lResult);
+        internal_printf("[!] RegQueryValueExA failed: %ld\n", lResult);
         KERNEL32$HeapFree(hHeap, 0, szPath);
         return (DWORD)lResult;
     }
@@ -949,7 +949,7 @@ DWORD HijackablePathCheck(void)
                     {
                         KERNEL32$CloseHandle(hFile);
                         KERNEL32$DeleteFileA(szTestFile);
-                        BeaconPrintf(CALLBACK_OUTPUT, "[+] WRITABLE: %s\n", szDir);
+                        internal_printf("[+] WRITABLE: %s\n", szDir);
                         nWritable++;
                     }
                 }
@@ -964,12 +964,12 @@ DWORD HijackablePathCheck(void)
 
     KERNEL32$HeapFree(hHeap, 0, szPath);
 
-    BeaconPrintf(CALLBACK_OUTPUT, "\n[*] Checked %d directories\n", nChecked);
+    internal_printf("\n[*] Checked %d directories\n", nChecked);
 
     if (nWritable > 0)
-        BeaconPrintf(CALLBACK_OUTPUT, "[+] VULNERABLE: %d writable path(s) found!\n", nWritable);
+        internal_printf("[+] VULNERABLE: %d writable path(s) found!\n", nWritable);
     else
-        BeaconPrintf(CALLBACK_OUTPUT, "[-] Not Vulnerable: No writable paths found\n");
+        internal_printf("[-] Not Vulnerable: No writable paths found\n");
 
     return ERROR_SUCCESS;
 }
@@ -1214,13 +1214,13 @@ DWORD PowerShellHistoryCheck(void)
 
     const char* pszSubPath = "\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt";
 
-    BeaconPrintf(CALLBACK_OUTPUT, "=== PowerShell History Check ===\n\n");
+    internal_printf("=== PowerShell History Check ===\n\n");
 
     dwSize = KERNEL32$GetEnvironmentVariableA("APPDATA", szAppData, sizeof(szAppData));
     if (dwSize == 0 || dwSize >= sizeof(szAppData))
     {
         dwErrorCode = KERNEL32$GetLastError();
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] Failed to get APPDATA path. Error: %lu\n", dwErrorCode);
+        internal_printf("[!] Failed to get APPDATA path. Error: %lu\n", dwErrorCode);
         goto PowerShellHistoryCheck_end;
     }
 
@@ -1254,13 +1254,13 @@ DWORD PowerShellHistoryCheck(void)
         dwErrorCode = KERNEL32$GetLastError();
         if (dwErrorCode == ERROR_FILE_NOT_FOUND || dwErrorCode == ERROR_PATH_NOT_FOUND)
         {
-            BeaconPrintf(CALLBACK_OUTPUT, "[-] PowerShell history file not found\n");
-            BeaconPrintf(CALLBACK_OUTPUT, "    Path: %s\n", szPath);
+            internal_printf("[-] PowerShell history file not found\n");
+            internal_printf("    Path: %s\n", szPath);
             dwErrorCode = ERROR_SUCCESS;
         }
         else
         {
-            BeaconPrintf(CALLBACK_OUTPUT, "[!] Error accessing file. Error: %lu\n", dwErrorCode);
+            internal_printf("[!] Error accessing file. Error: %lu\n", dwErrorCode);
         }
         goto PowerShellHistoryCheck_end;
     }
@@ -1269,29 +1269,29 @@ DWORD PowerShellHistoryCheck(void)
     if (!KERNEL32$GetFileSizeEx(hFile, &liFileSize))
     {
         dwErrorCode = KERNEL32$GetLastError();
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] Failed to get file size. Error: %lu\n", dwErrorCode);
+        internal_printf("[!] Failed to get file size. Error: %lu\n", dwErrorCode);
         goto PowerShellHistoryCheck_end;
     }
 
-    BeaconPrintf(CALLBACK_OUTPUT, "[+] PowerShell history file found!\n");
-    BeaconPrintf(CALLBACK_OUTPUT, "    Path: %s\n", szPath);
+    internal_printf("[+] PowerShell history file found!\n");
+    internal_printf("    Path: %s\n", szPath);
 
     if (liFileSize.QuadPart >= 1048576)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "    Size: %lu MB\n", (DWORD)(liFileSize.QuadPart / 1048576));
+        internal_printf("    Size: %lu MB\n", (DWORD)(liFileSize.QuadPart / 1048576));
     }
     else if (liFileSize.QuadPart >= 1024)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "    Size: %lu KB\n", (DWORD)(liFileSize.QuadPart / 1024));
+        internal_printf("    Size: %lu KB\n", (DWORD)(liFileSize.QuadPart / 1024));
     }
     else
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "    Size: %lu bytes\n", (DWORD)liFileSize.QuadPart);
+        internal_printf("    Size: %lu bytes\n", (DWORD)liFileSize.QuadPart);
     }
 
     if (liFileSize.QuadPart == 0)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "\n[-] History file is empty\n");
+        internal_printf("\n[-] History file is empty\n");
     }
 
     dwErrorCode = ERROR_SUCCESS;
@@ -1333,7 +1333,7 @@ DWORD UACStatusCheck(void)
     SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
     PSID pAdminSid = NULL;
 
-    BeaconPrintf(CALLBACK_OUTPUT, "=== UAC Status Check ===\n\n");
+    internal_printf("=== UAC Status Check ===\n\n");
 
     lResult = ADVAPI32$RegOpenKeyExA(
         HKEY_LOCAL_MACHINE,
@@ -1344,7 +1344,7 @@ DWORD UACStatusCheck(void)
 
     if (lResult != ERROR_SUCCESS)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] Failed to open registry key. Error: %ld\n", lResult);
+        internal_printf("[!] Failed to open registry key. Error: %ld\n", lResult);
         dwErrorCode = (DWORD)lResult;
         goto UACStatusCheck_end;
     }
@@ -1353,27 +1353,27 @@ DWORD UACStatusCheck(void)
     lResult = ADVAPI32$RegQueryValueExA(hKey, "EnableLUA", NULL, &dwType, (LPBYTE)&dwEnableLUA, &dwSize);
     if (lResult == ERROR_SUCCESS)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[*] UAC Enabled (EnableLUA): %s\n", dwEnableLUA ? "Yes" : "No");
+        internal_printf("[*] UAC Enabled (EnableLUA): %s\n", dwEnableLUA ? "Yes" : "No");
     }
     else
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[*] UAC Enabled (EnableLUA): Unknown (not found)\n");
+        internal_printf("[*] UAC Enabled (EnableLUA): Unknown (not found)\n");
     }
 
     dwSize = sizeof(DWORD);
     lResult = ADVAPI32$RegQueryValueExA(hKey, "ConsentPromptBehaviorAdmin", NULL, &dwType, (LPBYTE)&dwConsentPrompt, &dwSize);
     if (lResult == ERROR_SUCCESS)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[*] ConsentPromptBehaviorAdmin: %lu ", dwConsentPrompt);
+        internal_printf("[*] ConsentPromptBehaviorAdmin: %lu ", dwConsentPrompt);
         switch (dwConsentPrompt)
         {
-            case 0: BeaconPrintf(CALLBACK_OUTPUT, "(Elevate without prompting)\n"); break;
-            case 1: BeaconPrintf(CALLBACK_OUTPUT, "(Prompt for credentials on secure desktop)\n"); break;
-            case 2: BeaconPrintf(CALLBACK_OUTPUT, "(Prompt for consent on secure desktop)\n"); break;
-            case 3: BeaconPrintf(CALLBACK_OUTPUT, "(Prompt for credentials)\n"); break;
-            case 4: BeaconPrintf(CALLBACK_OUTPUT, "(Prompt for consent)\n"); break;
-            case 5: BeaconPrintf(CALLBACK_OUTPUT, "(Prompt for consent for non-Windows binaries)\n"); break;
-            default: BeaconPrintf(CALLBACK_OUTPUT, "(Unknown)\n"); break;
+            case 0: internal_printf("(Elevate without prompting)\n"); break;
+            case 1: internal_printf("(Prompt for credentials on secure desktop)\n"); break;
+            case 2: internal_printf("(Prompt for consent on secure desktop)\n"); break;
+            case 3: internal_printf("(Prompt for credentials)\n"); break;
+            case 4: internal_printf("(Prompt for consent)\n"); break;
+            case 5: internal_printf("(Prompt for consent for non-Windows binaries)\n"); break;
+            default: internal_printf("(Unknown)\n"); break;
         }
     }
 
@@ -1381,18 +1381,18 @@ DWORD UACStatusCheck(void)
     lResult = ADVAPI32$RegQueryValueExA(hKey, "PromptOnSecureDesktop", NULL, &dwType, (LPBYTE)&dwSecureDesktop, &dwSize);
     if (lResult == ERROR_SUCCESS)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[*] PromptOnSecureDesktop: %s\n", dwSecureDesktop ? "Yes" : "No");
+        internal_printf("[*] PromptOnSecureDesktop: %s\n", dwSecureDesktop ? "Yes" : "No");
     }
 
     ADVAPI32$RegCloseKey(hKey);
     hKey = NULL;
 
-    BeaconPrintf(CALLBACK_OUTPUT, "\n");
+    internal_printf("\n");
 
     if (!ADVAPI32$OpenProcessToken(KERNEL32$GetCurrentProcess(), TOKEN_QUERY, &hToken))
     {
         dwErrorCode = KERNEL32$GetLastError();
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] Failed to open process token. Error: %lu\n", dwErrorCode);
+        internal_printf("[!] Failed to open process token. Error: %lu\n", dwErrorCode);
         goto UACStatusCheck_end;
     }
 
@@ -1419,27 +1419,27 @@ DWORD UACStatusCheck(void)
         }
     }
 
-    BeaconPrintf(CALLBACK_OUTPUT, "[*] Integrity Level: ");
+    internal_printf("[*] Integrity Level: ");
     if (dwIntegrityLevel < SECURITY_MANDATORY_LOW_RID)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "Untrusted\n");
+        internal_printf("Untrusted\n");
     }
     else if (dwIntegrityLevel < SECURITY_MANDATORY_MEDIUM_RID)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "Low\n");
+        internal_printf("Low\n");
     }
     else if (dwIntegrityLevel >= SECURITY_MANDATORY_MEDIUM_RID && dwIntegrityLevel < SECURITY_MANDATORY_HIGH_RID)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "Medium\n");
+        internal_printf("Medium\n");
     }
     else if (dwIntegrityLevel >= SECURITY_MANDATORY_HIGH_RID && dwIntegrityLevel < SECURITY_MANDATORY_SYSTEM_RID)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "High (Elevated)\n");
+        internal_printf("High (Elevated)\n");
         bIsElevated = TRUE;
     }
     else if (dwIntegrityLevel >= SECURITY_MANDATORY_SYSTEM_RID)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "System\n");
+        internal_printf("System\n");
         bIsElevated = TRUE;
     }
 
@@ -1452,7 +1452,7 @@ DWORD UACStatusCheck(void)
             &pAdminSid))
     {
         dwErrorCode = KERNEL32$GetLastError();
-        BeaconPrintf(CALLBACK_OUTPUT, "[!] Failed to create Admin SID. Error: %lu\n", dwErrorCode);
+        internal_printf("[!] Failed to create Admin SID. Error: %lu\n", dwErrorCode);
         goto UACStatusCheck_end;
     }
 
@@ -1477,26 +1477,26 @@ DWORD UACStatusCheck(void)
         }
     }
 
-    BeaconPrintf(CALLBACK_OUTPUT, "[*] Local Admin Group Member: %s\n", bIsAdmin ? "Yes" : "No");
+    internal_printf("[*] Local Admin Group Member: %s\n", bIsAdmin ? "Yes" : "No");
 
-    BeaconPrintf(CALLBACK_OUTPUT, "\n[*] Summary:\n");
+    internal_printf("\n[*] Summary:\n");
 
     if (bIsElevated)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[+] Process is running with elevated privileges\n");
+        internal_printf("[+] Process is running with elevated privileges\n");
     }
     else if (bIsAdmin && dwEnableLUA)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[+] User is local admin but NOT elevated (UAC filtered token)\n");
-        BeaconPrintf(CALLBACK_OUTPUT, "[+] UAC bypass may be possible\n");
+        internal_printf("[+] User is local admin but NOT elevated (UAC filtered token)\n");
+        internal_printf("[+] UAC bypass may be possible\n");
     }
     else if (bIsAdmin && !dwEnableLUA)
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[+] User is local admin and UAC is disabled\n");
+        internal_printf("[+] User is local admin and UAC is disabled\n");
     }
     else
     {
-        BeaconPrintf(CALLBACK_OUTPUT, "[-] User is NOT a local admin\n");
+        internal_printf("[-] User is NOT a local admin\n");
     }
 
     dwErrorCode = ERROR_SUCCESS;
@@ -1558,8 +1558,8 @@ VOID go(
     }
     if (check == 0 || check == 2)
     {
-        printoutput(FALSE);
         UnquotedSVCPathCheck();
+        internal_printf("\n");
     }
     if (check == 0 || check == 3)
     {
@@ -1579,8 +1579,8 @@ VOID go(
     }
     if (check == 0 || check == 6)
     {
-        printoutput(FALSE);
         HijackablePathCheck();
+        internal_printf("\n");
     }
     if (check == 0 || check == 7)
     {
@@ -1594,13 +1594,13 @@ VOID go(
     }
     if (check == 0 || check == 9)
     {
-        printoutput(FALSE);
         PowerShellHistoryCheck();
+        internal_printf("\n");
     }
     if (check == 0 || check == 10)
     {
-        printoutput(FALSE);
         UACStatusCheck();
+        internal_printf("\n");
     }
 
     if (check == 0)
