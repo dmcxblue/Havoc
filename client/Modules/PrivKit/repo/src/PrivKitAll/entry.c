@@ -1527,8 +1527,206 @@ UACStatusCheck_end:
 }
 
 /* =================================================================
-   BOF Entry Point — the ONLY addition to the original PrivKit code.
-   arg: 0=all, 1-10=individual check
+   11. WritableSVCBinaryCheck  (added: test file ACL on service binaries)
+   ================================================================= */
+DWORD WritableSVCBinaryCheck(void)
+{
+    DWORD dwErrorCode = ERROR_SUCCESS;
+    SC_HANDLE hSCManager = NULL;
+    SC_HANDLE hService = NULL;
+    HANDLE hHeap = NULL;
+    LPBYTE pServices = NULL;
+    LPENUM_SERVICE_STATUS_PROCESSA pServiceStatus = NULL;
+    LPQUERY_SERVICE_CONFIGA pConfig = NULL;
+    DWORD dwBytesNeeded = 0;
+    DWORD dwServicesReturned = 0;
+    DWORD dwResumeHandle = 0;
+    DWORD dwBufferSize = 0;
+    DWORD dwConfigSize = 0;
+    DWORD i = 0;
+    int nVulnerable = 0;
+    char szBinPath[512];
+    int p, q;
+    HANDLE hFile;
+
+    hHeap = KERNEL32$GetProcessHeap();
+
+    internal_printf("=== Writable Service Binary Check ===\n\n");
+
+    hSCManager = ADVAPI32$OpenSCManagerA(NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE);
+    if (hSCManager == NULL)
+    {
+        dwErrorCode = KERNEL32$GetLastError();
+        internal_printf("[!] Failed to open Service Control Manager. Error: %lu\n", dwErrorCode);
+        goto WritableSVCBinaryCheck_end;
+    }
+
+    ADVAPI32$EnumServicesStatusExA(
+        hSCManager,
+        SC_ENUM_PROCESS_INFO,
+        SERVICE_WIN32,
+        SERVICE_STATE_ALL,
+        NULL,
+        0,
+        &dwBytesNeeded,
+        &dwServicesReturned,
+        &dwResumeHandle,
+        NULL);
+
+    dwBufferSize = dwBytesNeeded;
+    pServices = (LPBYTE)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, dwBufferSize);
+    if (pServices == NULL)
+    {
+        dwErrorCode = ERROR_NOT_ENOUGH_MEMORY;
+        internal_printf("[!] Failed to allocate memory for services\n");
+        goto WritableSVCBinaryCheck_end;
+    }
+
+    dwResumeHandle = 0;
+    if (!ADVAPI32$EnumServicesStatusExA(
+        hSCManager,
+        SC_ENUM_PROCESS_INFO,
+        SERVICE_WIN32,
+        SERVICE_STATE_ALL,
+        pServices,
+        dwBufferSize,
+        &dwBytesNeeded,
+        &dwServicesReturned,
+        &dwResumeHandle,
+        NULL))
+    {
+        dwErrorCode = KERNEL32$GetLastError();
+        internal_printf("[!] Failed to enumerate services. Error: %lu\n", dwErrorCode);
+        goto WritableSVCBinaryCheck_end;
+    }
+
+    internal_printf("[*] Checking %lu service binaries for write access...\n\n", dwServicesReturned);
+
+    pServiceStatus = (LPENUM_SERVICE_STATUS_PROCESSA)pServices;
+
+    for (i = 0; i < dwServicesReturned; i++)
+    {
+        hService = ADVAPI32$OpenServiceA(hSCManager, pServiceStatus[i].lpServiceName, SERVICE_QUERY_CONFIG);
+        if (hService == NULL)
+            continue;
+
+        dwConfigSize = 0;
+        ADVAPI32$QueryServiceConfigA(hService, NULL, 0, &dwConfigSize);
+        if (dwConfigSize == 0)
+        {
+            ADVAPI32$CloseServiceHandle(hService);
+            hService = NULL;
+            continue;
+        }
+
+        pConfig = (LPQUERY_SERVICE_CONFIGA)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, dwConfigSize);
+        if (pConfig == NULL)
+        {
+            ADVAPI32$CloseServiceHandle(hService);
+            hService = NULL;
+            continue;
+        }
+
+        if (!ADVAPI32$QueryServiceConfigA(hService, pConfig, dwConfigSize, &dwConfigSize))
+        {
+            KERNEL32$HeapFree(hHeap, 0, pConfig);
+            pConfig = NULL;
+            ADVAPI32$CloseServiceHandle(hService);
+            hService = NULL;
+            continue;
+        }
+
+        if (pConfig->lpBinaryPathName != NULL && pConfig->lpBinaryPathName[0] != '\0')
+        {
+            p = 0;
+            q = 0;
+
+            while (pConfig->lpBinaryPathName[p] == ' ') p++;
+
+            if (pConfig->lpBinaryPathName[p] == '"')
+            {
+                p++;
+                while (pConfig->lpBinaryPathName[p] != '\0' &&
+                       pConfig->lpBinaryPathName[p] != '"' && q < 510)
+                {
+                    szBinPath[q++] = pConfig->lpBinaryPathName[p++];
+                }
+            }
+            else
+            {
+                while (pConfig->lpBinaryPathName[p] != '\0' && q < 510)
+                {
+                    szBinPath[q++] = pConfig->lpBinaryPathName[p++];
+                    if (q >= 4)
+                    {
+                        char e1 = szBinPath[q-4]; char e2 = szBinPath[q-3];
+                        char e3 = szBinPath[q-2]; char e4 = szBinPath[q-1];
+                        if (e1 >= 'A' && e1 <= 'Z') e1 += 32;
+                        if (e2 >= 'A' && e2 <= 'Z') e2 += 32;
+                        if (e3 >= 'A' && e3 <= 'Z') e3 += 32;
+                        if (e4 >= 'A' && e4 <= 'Z') e4 += 32;
+                        if (e1 == '.' && e2 == 'e' && e3 == 'x' && e4 == 'e')
+                            break;
+                    }
+                }
+            }
+            szBinPath[q] = '\0';
+
+            if (q > 0)
+            {
+                hFile = KERNEL32$CreateFileA(
+                    szBinPath,
+                    GENERIC_WRITE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL,
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL,
+                    NULL);
+
+                if (hFile != INVALID_HANDLE_VALUE)
+                {
+                    KERNEL32$CloseHandle(hFile);
+                    internal_printf("[+] WRITABLE: %s\n", pServiceStatus[i].lpServiceName);
+                    internal_printf("    Binary: %s\n", szBinPath);
+                    internal_printf("    State:  %s\n\n", GetServiceState(pServiceStatus[i].ServiceStatusProcess.dwCurrentState));
+                    nVulnerable++;
+                }
+            }
+        }
+
+        KERNEL32$HeapFree(hHeap, 0, pConfig);
+        pConfig = NULL;
+        ADVAPI32$CloseServiceHandle(hService);
+        hService = NULL;
+    }
+
+    if (nVulnerable > 0)
+    {
+        internal_printf("[+] VULNERABLE: %d writable service binary/binaries found!\n", nVulnerable);
+    }
+    else
+    {
+        internal_printf("[-] No writable service binaries found\n");
+    }
+
+    dwErrorCode = ERROR_SUCCESS;
+
+WritableSVCBinaryCheck_end:
+    if (pConfig != NULL)
+        KERNEL32$HeapFree(hHeap, 0, pConfig);
+    if (pServices != NULL)
+        KERNEL32$HeapFree(hHeap, 0, pServices);
+    if (hService != NULL)
+        ADVAPI32$CloseServiceHandle(hService);
+    if (hSCManager != NULL)
+        ADVAPI32$CloseServiceHandle(hSCManager);
+
+    return dwErrorCode;
+}
+
+/* =================================================================
+   BOF Entry Point
+   arg: 0=all, 1-11=individual check
    ================================================================= */
 #ifdef BOF
 VOID go(
@@ -1600,6 +1798,11 @@ VOID go(
     if (check == 0 || check == 10)
     {
         UACStatusCheck();
+        internal_printf("\n");
+    }
+    if (check == 0 || check == 11)
+    {
+        WritableSVCBinaryCheck();
         internal_printf("\n");
     }
 

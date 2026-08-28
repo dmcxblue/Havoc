@@ -660,8 +660,8 @@ func (b *Builder) PatchConfig() ([]byte, error) {
 	if b.FileType == FILETYPE_WINDOWS_SERVICE_EXE {
 		if val, ok := b.config.Config["Service Name"].(string); ok {
 			if len(val) > 0 {
-				// Sanitize service name: only allow alphanumeric and underscore
-				sanitized := regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(val, "")
+				// Sanitize service name: allow alphanumeric, underscore, and spaces
+				sanitized := regexp.MustCompile(`[^a-zA-Z0-9_ ]`).ReplaceAllString(val, "")
 				if sanitized != val {
 					if !b.silent {
 						b.SendConsoleMessage("Warning", "service name sanitized from '"+val+"' to '"+sanitized+"'")
@@ -670,7 +670,8 @@ func (b *Builder) PatchConfig() ([]byte, error) {
 				if len(sanitized) == 0 {
 					sanitized = common.RandomString(6)
 				}
-				b.compilerOptions.Defines = append(b.compilerOptions.Defines, "SERVICE_NAME=\\\""+sanitized+"\\\"")
+				escaped := strings.ReplaceAll(sanitized, " ", "\\ ")
+				b.compilerOptions.Defines = append(b.compilerOptions.Defines, "SERVICE_NAME=\\\""+escaped+"\\\"")
 				if !b.silent {
 					b.SendConsoleMessage("Info", "set service name to "+sanitized)
 				}

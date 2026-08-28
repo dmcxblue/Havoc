@@ -27,3 +27,4 @@ RegisterCommand( _make_check( 7,  "Check Modifiable Autorun Entries" ),         
 RegisterCommand( _make_check( 8,  "Check Token Privileges" ),                     "privkit", "tokenprivileges", "Check Token Privileges",                       0, "", "" )
 RegisterCommand( _make_check( 9,  "Check PowerShell History" ),                   "privkit", "powershellhistory","Check PowerShell History",                     0, "", "" )
 RegisterCommand( _make_check( 10, "Check UAC Status" ),                           "privkit", "uac",             "Check UAC Status",                             0, "", "" )
+RegisterCommand( _make_check( 11, "Check Writable Service Binaries" ),            "privkit", "writablesvc",     "Check Writable Service Binaries (file ACL)",   0, "", "" )
