@@ -23,5 +23,7 @@ files = [
   "client/Modules/Keylogger/keylogger.py",
   "client/Modules/Clipboard/clipboard.py",
   "client/Modules/PrivKit/privkit.py",
-  "client/Modules/Icacls/icacls.py"
+  "client/Modules/Icacls/icacls.py",
+  "client/Modules/Copy/copy.py",
+  "client/Modules/ScSdshow/sc_sdshow.py"
 ]
