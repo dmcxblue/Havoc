@@ -58,7 +58,20 @@ client-cleanup:
 	@ rm -rf ./client/Havoc
 
 
-MINGW_CC = x86_64-w64-mingw32-gcc
+MINGW_CC     = x86_64-w64-mingw32-gcc
+MINGW_CC_x86 = i686-w64-mingw32-gcc
+
+# CS-Remote-OPs-BOF extras registered by client/Modules/RemoteOps/RemoteOpsExtra.py
+# The vendored source tree is left untouched — we only compile from it into
+# client/Modules/RemoteOps/bin/ where the Python loader expects the .o files.
+REMOTEOPS_EXTRA_BOFS := \
+	chromeKey get_priv office_tokens procdump ProcessDestroy \
+	ProcessListHandles sc_config sc_failure schtaskscreate schtasksdelete \
+	schtasksrun schtasksstop shspawnas suspendresume unexpireuser
+
+REMOTEOPS_SRC    := client/Modules/RemoteOps/CS-Remote-OPs-BOF/src
+REMOTEOPS_COMMON := $(REMOTEOPS_SRC)/common
+REMOTEOPS_BIN    := client/Modules/RemoteOps/bin
 
 # custom BOF modules — compiled on every client-build
 bof-build:
@@ -98,6 +111,17 @@ bof-build:
 			-DBOF -fno-builtin && \
 		echo "  -> LiveDesktop OK"; \
 	fi
+	@ mkdir -p $(REMOTEOPS_BIN)
+	@ for bof in $(REMOTEOPS_EXTRA_BOFS); do \
+		src=$(REMOTEOPS_SRC)/Remote/$$bof/entry.c; \
+		if [ -f "$$src" ]; then \
+			$(MINGW_CC)     -o $(REMOTEOPS_BIN)/$$bof.x64.o -c "$$src" -I $(REMOTEOPS_COMMON) -DBOF -Os && \
+			$(MINGW_CC_x86) -o $(REMOTEOPS_BIN)/$$bof.x86.o -c "$$src" -I $(REMOTEOPS_COMMON) -DBOF -Os && \
+			echo "  -> RemoteOps extra: $$bof OK"; \
+		else \
+			echo "  -> RemoteOps extra: $$bof (source missing, skipped)"; \
+		fi; \
+	done
 
 # cleanup target
 clean: ts-cleanup client-cleanup

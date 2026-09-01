@@ -10,6 +10,7 @@ files = [
   "client/Modules/SituationalAwareness/SituationalAwareness.py",
   "client/Modules/Delegation/delegation.py",
   "client/Modules/RemoteOps/RemoteOps.py",
+  "client/Modules/RemoteOps/RemoteOpsExtra.py",
   "client/Modules/Domaininfo/Domaininfo.py",
   "client/Modules/Jump-exec/ScShell/scshell.py",
   "client/Modules/Jump-exec/Psexec/psexec.py",
