@@ -12,6 +12,7 @@ WINBASEAPI void * WINAPI KERNEL32$HeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T 
 WINBASEAPI HANDLE WINAPI KERNEL32$GetProcessHeap(void);
 WINBASEAPI BOOL WINAPI KERNEL32$HeapFree(HANDLE, DWORD, PVOID);
 WINBASEAPI HLOCAL WINAPI KERNEL32$LocalFree(HLOCAL);
+WINBASEAPI DWORD WINAPI KERNEL32$GetFileAttributesA(LPCSTR lpFileName);
 
 DECLSPEC_IMPORT void *  MSVCRT$calloc(size_t, size_t);
 DECLSPEC_IMPORT void    MSVCRT$free(void *);
@@ -132,25 +133,35 @@ static void PrintSid(PSID pSid)
 
 static void PrintPermissions(DWORD mask)
 {
-    if ((mask & 0x1F01FF) == 0x1F01FF)       { internal_printf("Full Control"); return; }
-    if ((mask & 0x1301BF) == 0x1301BF)       { internal_printf("Modify"); return; }
-    if ((mask & 0x1200A9) == 0x1200A9)       { internal_printf("Read & Execute"); return; }
+    if ((mask & 0x1F01FF) == 0x1F01FF)       { internal_printf("F  (Full Control)"); return; }
+    if ((mask & 0x1301BF) == 0x1301BF)       { internal_printf("M  (Modify)"); return; }
+    if ((mask & 0x1200A9) == 0x1200A9)       { internal_printf("RX (Read & Execute)"); return; }
 
     int first = 1;
-    if (mask & 0x120089) { internal_printf("Read"); first = 0; }
-    if (mask & 0x120116) { if (!first) internal_printf(", "); internal_printf("Write"); first = 0; }
-    if (mask & 0x10000000) { if (!first) internal_printf(", "); internal_printf("Generic All"); first = 0; }
-    if (mask & 0x20000000) { if (!first) internal_printf(", "); internal_printf("Generic Execute"); first = 0; }
-    if (mask & 0x40000000) { if (!first) internal_printf(", "); internal_printf("Generic Write"); first = 0; }
-    if (mask & 0x80000000) { if (!first) internal_printf(", "); internal_printf("Generic Read"); first = 0; }
+    if (mask & 0x120089) { internal_printf("R (Read)"); first = 0; }
+    if (mask & 0x120116) { if (!first) internal_printf(", "); internal_printf("W (Write)"); first = 0; }
+    if (mask & 0x10000000) { if (!first) internal_printf(", "); internal_printf("GA (Generic All)"); first = 0; }
+    if (mask & 0x20000000) { if (!first) internal_printf(", "); internal_printf("GX (Generic Execute)"); first = 0; }
+    if (mask & 0x40000000) { if (!first) internal_printf(", "); internal_printf("GW (Generic Write)"); first = 0; }
+    if (mask & 0x80000000) { if (!first) internal_printf(", "); internal_printf("GR (Generic Read)"); first = 0; }
     if (first) internal_printf("Special (0x%08X)", mask);
 }
 
-static void PrintInheritance(BYTE flags)
+static void PrintInheritance(BYTE flags, BOOL isDirectory)
 {
     BOOL ci = flags & CONTAINER_INHERIT_ACE;
     BOOL oi = flags & OBJECT_INHERIT_ACE;
     BOOL io = flags & INHERIT_ONLY_ACE;
+
+    if (!isDirectory)
+    {
+        /* CI/OI/IO describe propagation to child objects; files have none.
+           If any of those flags happen to be set on a file ACE (rare), report
+           the raw flags rather than the misleading folder-oriented text. */
+        if (!ci && !oi && !io) { internal_printf("This file"); return; }
+        internal_printf("This file (unexpected flags=0x%02X)", flags);
+        return;
+    }
 
     if (!ci && !oi && !io)      internal_printf("This folder only");
     else if (ci && oi && !io)   internal_printf("This folder, subfolders, and files");
@@ -181,6 +192,10 @@ VOID go(IN PCHAR Buffer, IN ULONG Length)
     }
 
     if (!bofstart()) return;
+
+    DWORD attrs = KERNEL32$GetFileAttributesA(path);
+    BOOL isDirectory = (attrs != INVALID_FILE_ATTRIBUTES) &&
+                       (attrs & FILE_ATTRIBUTE_DIRECTORY);
 
     DWORD ret = ADVAPI32$GetNamedSecurityInfoA(
         path, SE_FILE_OBJECT,
@@ -234,7 +249,7 @@ VOID go(IN PCHAR Buffer, IN ULONG Length)
         internal_printf("\n");
         internal_printf("    Inherited:   %s\n", (pAce->Header.AceFlags & INHERITED_ACE) ? "Yes" : "No");
         internal_printf("    Applies to:  ");
-        PrintInheritance(pAce->Header.AceFlags);
+        PrintInheritance(pAce->Header.AceFlags, isDirectory);
         internal_printf("\n\n");
     }
 

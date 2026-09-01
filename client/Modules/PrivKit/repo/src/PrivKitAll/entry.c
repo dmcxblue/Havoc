@@ -292,8 +292,14 @@ UnquotedSVCPathCheck_end:
 BOOL CheckSidInToken(HANDLE hToken, PSID pSid)
 {
     BOOL bIsMember = FALSE;
+    (void)hToken;
 
-    if (ADVAPI32$CheckTokenMembership(hToken, pSid, &bIsMember))
+    /* CheckTokenMembership requires an impersonation token; passing a primary
+       token (what OpenProcessToken returns) silently returns FALSE for group
+       SIDs on many builds. Passing NULL makes the API use the thread's
+       impersonation token, or auto-duplicate the primary token if the thread
+       isn't impersonating — the safe path for a BOF. */
+    if (ADVAPI32$CheckTokenMembership(NULL, pSid, &bIsMember))
     {
         return bIsMember;
     }
@@ -303,12 +309,16 @@ BOOL CheckSidInToken(HANDLE hToken, PSID pSid)
 
 BOOL HasModifyRights(ACCESS_MASK mask)
 {
-    if (mask & SERVICE_CHANGE_CONFIG)  return TRUE;
-    if (mask & WRITE_DAC)              return TRUE;
-    if (mask & WRITE_OWNER)            return TRUE;
-    if (mask & GENERIC_ALL)            return TRUE;
-    if (mask & GENERIC_WRITE)          return TRUE;
-    if (mask & SERVICE_ALL_ACCESS)     return TRUE;
+    /* Any single write-like bit is enough to modify the service. */
+    if (mask & SERVICE_CHANGE_CONFIG)                       return TRUE;
+    if (mask & WRITE_DAC)                                   return TRUE;
+    if (mask & WRITE_OWNER)                                 return TRUE;
+    if (mask & GENERIC_ALL)                                 return TRUE;
+    if (mask & GENERIC_WRITE)                               return TRUE;
+    /* SERVICE_ALL_ACCESS is a COMBINED mask; require every bit to be set,
+       otherwise this fires on any ACE that grants even QueryConfig or
+       ReadControl (which is basically every default service ACE). */
+    if ((mask & SERVICE_ALL_ACCESS) == SERVICE_ALL_ACCESS)  return TRUE;
 
     return FALSE;
 }
@@ -1527,31 +1537,79 @@ UACStatusCheck_end:
 }
 
 /* =================================================================
-   11. WritableSVCBinaryCheck  (added: test file ACL on service binaries)
+   11. WritableSVCBinaryCheck  (check file DACL on service binaries)
+   Uses DACL analysis instead of CreateFileA so it works even when
+   the service binary is loaded/running (Windows locks mapped images
+   against GENERIC_WRITE handles).
    ================================================================= */
+BOOL HasFileWriteRights(ACCESS_MASK mask)
+{
+    if (mask & FILE_WRITE_DATA)     return TRUE;
+    if (mask & FILE_APPEND_DATA)    return TRUE;
+    if (mask & GENERIC_WRITE)       return TRUE;
+    if (mask & GENERIC_ALL)         return TRUE;
+    if (mask & WRITE_DAC)           return TRUE;
+    if (mask & WRITE_OWNER)         return TRUE;
+    return FALSE;
+}
+
 DWORD WritableSVCBinaryCheck(void)
 {
     DWORD dwErrorCode = ERROR_SUCCESS;
     SC_HANDLE hSCManager = NULL;
     SC_HANDLE hService = NULL;
+    HANDLE hToken = NULL;
     HANDLE hHeap = NULL;
     LPBYTE pServices = NULL;
     LPENUM_SERVICE_STATUS_PROCESSA pServiceStatus = NULL;
     LPQUERY_SERVICE_CONFIGA pConfig = NULL;
+    PTOKEN_USER pTokenUser = NULL;
+    PSECURITY_DESCRIPTOR pFileSD = NULL;
     DWORD dwBytesNeeded = 0;
     DWORD dwServicesReturned = 0;
     DWORD dwResumeHandle = 0;
     DWORD dwBufferSize = 0;
     DWORD dwConfigSize = 0;
+    DWORD dwTokenInfoSize = 0;
+    DWORD dwSDSize = 0;
     DWORD i = 0;
+    DWORD j = 0;
     int nVulnerable = 0;
     char szBinPath[512];
     int p, q;
-    HANDLE hFile;
+    BOOL bDaclPresent = FALSE;
+    BOOL bDaclDefaulted = FALSE;
+    PACL pDacl = NULL;
+    PACE_HEADER pAceHeader = NULL;
+    PACCESS_ALLOWED_ACE pAce = NULL;
+    PSID pAceSid = NULL;
 
     hHeap = KERNEL32$GetProcessHeap();
 
     internal_printf("=== Writable Service Binary Check ===\n\n");
+
+    if (!ADVAPI32$OpenProcessToken(KERNEL32$GetCurrentProcess(), TOKEN_QUERY, &hToken))
+    {
+        dwErrorCode = KERNEL32$GetLastError();
+        internal_printf("[!] Failed to open process token. Error: %lu\n", dwErrorCode);
+        goto WritableSVCBinaryCheck_end;
+    }
+
+    ADVAPI32$GetTokenInformation(hToken, TokenUser, NULL, 0, &dwTokenInfoSize);
+    pTokenUser = (PTOKEN_USER)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, dwTokenInfoSize);
+    if (pTokenUser == NULL)
+    {
+        dwErrorCode = ERROR_NOT_ENOUGH_MEMORY;
+        internal_printf("[!] Failed to allocate memory for token user\n");
+        goto WritableSVCBinaryCheck_end;
+    }
+
+    if (!ADVAPI32$GetTokenInformation(hToken, TokenUser, pTokenUser, dwTokenInfoSize, &dwTokenInfoSize))
+    {
+        dwErrorCode = KERNEL32$GetLastError();
+        internal_printf("[!] Failed to get token user. Error: %lu\n", dwErrorCode);
+        goto WritableSVCBinaryCheck_end;
+    }
 
     hSCManager = ADVAPI32$OpenSCManagerA(NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE);
     if (hSCManager == NULL)
@@ -1562,16 +1620,9 @@ DWORD WritableSVCBinaryCheck(void)
     }
 
     ADVAPI32$EnumServicesStatusExA(
-        hSCManager,
-        SC_ENUM_PROCESS_INFO,
-        SERVICE_WIN32,
-        SERVICE_STATE_ALL,
-        NULL,
-        0,
-        &dwBytesNeeded,
-        &dwServicesReturned,
-        &dwResumeHandle,
-        NULL);
+        hSCManager, SC_ENUM_PROCESS_INFO, SERVICE_WIN32,
+        SERVICE_STATE_ALL, NULL, 0, &dwBytesNeeded,
+        &dwServicesReturned, &dwResumeHandle, NULL);
 
     dwBufferSize = dwBytesNeeded;
     pServices = (LPBYTE)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, dwBufferSize);
@@ -1584,16 +1635,9 @@ DWORD WritableSVCBinaryCheck(void)
 
     dwResumeHandle = 0;
     if (!ADVAPI32$EnumServicesStatusExA(
-        hSCManager,
-        SC_ENUM_PROCESS_INFO,
-        SERVICE_WIN32,
-        SERVICE_STATE_ALL,
-        pServices,
-        dwBufferSize,
-        &dwBytesNeeded,
-        &dwServicesReturned,
-        &dwResumeHandle,
-        NULL))
+        hSCManager, SC_ENUM_PROCESS_INFO, SERVICE_WIN32,
+        SERVICE_STATE_ALL, pServices, dwBufferSize, &dwBytesNeeded,
+        &dwServicesReturned, &dwResumeHandle, NULL))
     {
         dwErrorCode = KERNEL32$GetLastError();
         internal_printf("[!] Failed to enumerate services. Error: %lu\n", dwErrorCode);
@@ -1636,61 +1680,138 @@ DWORD WritableSVCBinaryCheck(void)
             continue;
         }
 
-        if (pConfig->lpBinaryPathName != NULL && pConfig->lpBinaryPathName[0] != '\0')
+        if (pConfig->lpBinaryPathName == NULL || pConfig->lpBinaryPathName[0] == '\0')
         {
-            p = 0;
-            q = 0;
+            KERNEL32$HeapFree(hHeap, 0, pConfig);
+            pConfig = NULL;
+            ADVAPI32$CloseServiceHandle(hService);
+            hService = NULL;
+            continue;
+        }
 
-            while (pConfig->lpBinaryPathName[p] == ' ') p++;
+        p = 0; q = 0;
+        while (pConfig->lpBinaryPathName[p] == ' ') p++;
 
-            if (pConfig->lpBinaryPathName[p] == '"')
+        if (pConfig->lpBinaryPathName[p] == '"')
+        {
+            p++;
+            while (pConfig->lpBinaryPathName[p] != '\0' &&
+                   pConfig->lpBinaryPathName[p] != '"' && q < 510)
             {
-                p++;
-                while (pConfig->lpBinaryPathName[p] != '\0' &&
-                       pConfig->lpBinaryPathName[p] != '"' && q < 510)
+                szBinPath[q++] = pConfig->lpBinaryPathName[p++];
+            }
+        }
+        else
+        {
+            while (pConfig->lpBinaryPathName[p] != '\0' && q < 510)
+            {
+                szBinPath[q++] = pConfig->lpBinaryPathName[p++];
+                if (q >= 4)
                 {
-                    szBinPath[q++] = pConfig->lpBinaryPathName[p++];
+                    char e1 = szBinPath[q-4]; char e2 = szBinPath[q-3];
+                    char e3 = szBinPath[q-2]; char e4 = szBinPath[q-1];
+                    if (e1 >= 'A' && e1 <= 'Z') e1 += 32;
+                    if (e2 >= 'A' && e2 <= 'Z') e2 += 32;
+                    if (e3 >= 'A' && e3 <= 'Z') e3 += 32;
+                    if (e4 >= 'A' && e4 <= 'Z') e4 += 32;
+                    if (e1 == '.' && e2 == 'e' && e3 == 'x' && e4 == 'e')
+                        break;
                 }
             }
-            else
+        }
+        szBinPath[q] = '\0';
+
+        if (q == 0)
+        {
+            KERNEL32$HeapFree(hHeap, 0, pConfig);
+            pConfig = NULL;
+            ADVAPI32$CloseServiceHandle(hService);
+            hService = NULL;
+            continue;
+        }
+
+        dwSDSize = 0;
+        ADVAPI32$GetFileSecurityA(szBinPath, DACL_SECURITY_INFORMATION, NULL, 0, &dwSDSize);
+        if (dwSDSize > 0)
+        {
+            pFileSD = (PSECURITY_DESCRIPTOR)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, dwSDSize);
+            if (pFileSD != NULL)
             {
-                while (pConfig->lpBinaryPathName[p] != '\0' && q < 510)
+                if (ADVAPI32$GetFileSecurityA(szBinPath, DACL_SECURITY_INFORMATION, pFileSD, dwSDSize, &dwSDSize))
                 {
-                    szBinPath[q++] = pConfig->lpBinaryPathName[p++];
-                    if (q >= 4)
+                    pDacl = NULL;
+                    bDaclPresent = FALSE;
+                    bDaclDefaulted = FALSE;
+                    if (ADVAPI32$GetSecurityDescriptorDacl(pFileSD, &bDaclPresent, &pDacl, &bDaclDefaulted))
                     {
-                        char e1 = szBinPath[q-4]; char e2 = szBinPath[q-3];
-                        char e3 = szBinPath[q-2]; char e4 = szBinPath[q-1];
-                        if (e1 >= 'A' && e1 <= 'Z') e1 += 32;
-                        if (e2 >= 'A' && e2 <= 'Z') e2 += 32;
-                        if (e3 >= 'A' && e3 <= 'Z') e3 += 32;
-                        if (e4 >= 'A' && e4 <= 'Z') e4 += 32;
-                        if (e1 == '.' && e2 == 'e' && e3 == 'x' && e4 == 'e')
-                            break;
+                        /* NULL DACL (present but pointer NULL) grants everyone all access. */
+                        if (bDaclPresent && pDacl == NULL)
+                        {
+                            internal_printf("[+] WRITABLE (NULL DACL): %s\n", pServiceStatus[i].lpServiceName);
+                            internal_printf("    Binary: %s\n", szBinPath);
+                            internal_printf("    Display: %s\n", pConfig->lpDisplayName ? pConfig->lpDisplayName : "N/A");
+                            internal_printf("    State:  %s\n", GetServiceState(pServiceStatus[i].ServiceStatusProcess.dwCurrentState));
+                            internal_printf("    Start:  %s\n\n", GetStartType(pConfig->dwStartType));
+                            nVulnerable++;
+                        }
+                        else if (bDaclPresent && pDacl != NULL)
+                        {
+                            /* First pass: honor explicit deny ACEs for the token. */
+                            BOOL bDenied = FALSE;
+                            for (j = 0; j < pDacl->AceCount; j++)
+                            {
+                                if (!ADVAPI32$GetAce(pDacl, j, (LPVOID*)&pAceHeader))
+                                    continue;
+                                if (pAceHeader->AceType != ACCESS_DENIED_ACE_TYPE)
+                                    continue;
+
+                                pAce = (PACCESS_ALLOWED_ACE)pAceHeader;
+                                pAceSid = (PSID)&pAce->SidStart;
+
+                                if (!HasFileWriteRights(pAce->Mask))
+                                    continue;
+
+                                if (ADVAPI32$EqualSid(pAceSid, pTokenUser->User.Sid) ||
+                                    CheckSidInToken(hToken, pAceSid))
+                                {
+                                    bDenied = TRUE;
+                                    break;
+                                }
+                            }
+
+                            if (!bDenied)
+                            {
+                                for (j = 0; j < pDacl->AceCount; j++)
+                                {
+                                    if (!ADVAPI32$GetAce(pDacl, j, (LPVOID*)&pAceHeader))
+                                        continue;
+                                    if (pAceHeader->AceType != ACCESS_ALLOWED_ACE_TYPE)
+                                        continue;
+
+                                    pAce = (PACCESS_ALLOWED_ACE)pAceHeader;
+                                    pAceSid = (PSID)&pAce->SidStart;
+
+                                    if (!HasFileWriteRights(pAce->Mask))
+                                        continue;
+
+                                    if (ADVAPI32$EqualSid(pAceSid, pTokenUser->User.Sid) ||
+                                        CheckSidInToken(hToken, pAceSid))
+                                    {
+                                        internal_printf("[+] WRITABLE: %s\n", pServiceStatus[i].lpServiceName);
+                                        internal_printf("    Binary: %s\n", szBinPath);
+                                        internal_printf("    Display: %s\n", pConfig->lpDisplayName ? pConfig->lpDisplayName : "N/A");
+                                        internal_printf("    State:  %s\n", GetServiceState(pServiceStatus[i].ServiceStatusProcess.dwCurrentState));
+                                        internal_printf("    Start:  %s\n\n", GetStartType(pConfig->dwStartType));
+                                        nVulnerable++;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            }
-            szBinPath[q] = '\0';
-
-            if (q > 0)
-            {
-                hFile = KERNEL32$CreateFileA(
-                    szBinPath,
-                    GENERIC_WRITE,
-                    FILE_SHARE_READ | FILE_SHARE_WRITE,
-                    NULL,
-                    OPEN_EXISTING,
-                    FILE_ATTRIBUTE_NORMAL,
-                    NULL);
-
-                if (hFile != INVALID_HANDLE_VALUE)
-                {
-                    KERNEL32$CloseHandle(hFile);
-                    internal_printf("[+] WRITABLE: %s\n", pServiceStatus[i].lpServiceName);
-                    internal_printf("    Binary: %s\n", szBinPath);
-                    internal_printf("    State:  %s\n\n", GetServiceState(pServiceStatus[i].ServiceStatusProcess.dwCurrentState));
-                    nVulnerable++;
-                }
+                KERNEL32$HeapFree(hHeap, 0, pFileSD);
+                pFileSD = NULL;
             }
         }
 
@@ -1712,14 +1833,20 @@ DWORD WritableSVCBinaryCheck(void)
     dwErrorCode = ERROR_SUCCESS;
 
 WritableSVCBinaryCheck_end:
+    if (pFileSD != NULL)
+        KERNEL32$HeapFree(hHeap, 0, pFileSD);
     if (pConfig != NULL)
         KERNEL32$HeapFree(hHeap, 0, pConfig);
     if (pServices != NULL)
         KERNEL32$HeapFree(hHeap, 0, pServices);
+    if (pTokenUser != NULL)
+        KERNEL32$HeapFree(hHeap, 0, pTokenUser);
     if (hService != NULL)
         ADVAPI32$CloseServiceHandle(hService);
     if (hSCManager != NULL)
         ADVAPI32$CloseServiceHandle(hSCManager);
+    if (hToken != NULL)
+        KERNEL32$CloseHandle(hToken);
 
     return dwErrorCode;
 }

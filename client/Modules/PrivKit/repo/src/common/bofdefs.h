@@ -342,6 +342,7 @@ WINADVAPI WINBOOL WINAPI ADVAPI32$LookupAccountSidW (LPCWSTR lpSystemName, PSID 
 WINADVAPI WINBOOL WINAPI ADVAPI32$LookupPrivilegeNameA (LPCSTR lpSystemName, PLUID lpLuid, LPSTR lpName, LPDWORD cchName);
 WINADVAPI WINBOOL WINAPI ADVAPI32$LookupPrivilegeDisplayNameA (LPCSTR lpSystemName, LPCSTR lpName, LPSTR lpDisplayName, LPDWORD cchDisplayName, LPDWORD lpLanguageId);
 WINADVAPI WINBOOL WINAPI ADVAPI32$LookupPrivilegeValueA (LPCSTR lpSystemName, LPCSTR lpName, PLUID lpLuid);
+WINADVAPI WINBOOL WINAPI ADVAPI32$GetFileSecurityA (LPCSTR lpFileName, SECURITY_INFORMATION RequestedInformation, PSECURITY_DESCRIPTOR pSecurityDescriptor, DWORD nLength, LPDWORD lpnLengthNeeded);
 WINADVAPI WINBOOL WINAPI ADVAPI32$GetFileSecurityW (LPCWSTR lpFileName, SECURITY_INFORMATION RequestedInformation, PSECURITY_DESCRIPTOR pSecurityDescriptor, DWORD nLength, LPDWORD lpnLengthNeeded);
 WINADVAPI VOID WINAPI ADVAPI32$MapGenericMask (PDWORD AccessMask, PGENERIC_MAPPING GenericMapping);
 WINADVAPI ULONG WINAPI ADVAPI32$LsaNtStatusToWinError(NTSTATUS);
@@ -788,7 +789,8 @@ WINBASEAPI WINBOOL WINAPI ADVAPI32$SystemFunction036(PVOID RandomBuffer,ULONG Ra
 #define ADVAPI32$LookupPrivilegeNameA LookupPrivilegeNameA 
 #define ADVAPI32$LookupPrivilegeDisplayNameA LookupPrivilegeDisplayNameA 
 #define ADVAPI32$LookupPrivilegeValueA LookupPrivilegeValueA 
-#define ADVAPI32$GetFileSecurityW GetFileSecurityW 
+#define ADVAPI32$GetFileSecurityA GetFileSecurityA
+#define ADVAPI32$GetFileSecurityW GetFileSecurityW
 #define ADVAPI32$MapGenericMask MapGenericMask 
 #define ADVAPI32$LsaNtStatusToWinError LsaNtStatusToWinError
 #define ADVAPI32$InitializeSecurityDescriptor InitializeSecurityDescriptor 
