@@ -26,5 +26,7 @@ files = [
   "client/Modules/PrivKit/privkit.py",
   "client/Modules/Icacls/icacls.py",
   "client/Modules/Copy/copy.py",
-  "client/Modules/ScSdshow/sc_sdshow.py"
+  "client/Modules/ScSdshow/sc_sdshow.py",
+  "client/Modules/GhostTask/ghosttask.py",
+  "client/Modules/UacBonanza/uacbonanza.py"
 ]

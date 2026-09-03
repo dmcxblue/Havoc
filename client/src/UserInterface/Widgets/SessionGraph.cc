@@ -10,6 +10,7 @@
 #include <UserInterface/Widgets/SessionTable.hpp>
 #include <UserInterface/Widgets/ProcessList.hpp>
 #include <UserInterface/Widgets/FileBrowser.hpp>
+#include <UserInterface/Widgets/LiveDesktopWidget.hpp>
 #include <Havoc/DBManager/DBManager.hpp>
 
 #include <Util/ColorText.h>
@@ -616,6 +617,7 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
 
     SessionExplorer.addAction( "Process List" );
     SessionExplorer.addAction( "File Explorer" );
+    SessionExplorer.addAction( "Live Desktop" );
     SessionExplorer.setStyleSheet( MenuStyle );
 
     SessionMenu.addAction( "Interact" );
@@ -841,6 +843,18 @@ void Node::contextMenuEvent( QGraphicsSceneContextMenuEvent* event )
                         }
 
                         Session.InteractedWidget->DemonCommands->Execute.FS( Util::gen_random( 8 ).c_str(), "dir;ui", "." );
+                    }
+                    else if ( action->text().compare( "Live Desktop" ) == 0 )
+                    {
+                        auto TabName = QString( "[" + NodeID + "] Live Desktop" );
+
+                        if ( Session.LiveDesktop == nullptr )
+                        {
+                            Session.LiveDesktop = new UserInterface::Widgets::LiveDesktopWidget;
+                            Session.LiveDesktop->setupUi( new QWidget );
+                            Session.LiveDesktop->SessionID = Session.Name;
+                        }
+                        HavocX::Teamserver.TabSession->NewBottomTab( Session.LiveDesktop->LiveDesktopTabWidget, TabName.toStdString() );
                     }
                 }
 

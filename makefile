@@ -111,6 +111,17 @@ bof-build:
 			-DBOF -fno-builtin && \
 		echo "  -> LiveDesktop OK"; \
 	fi
+	@ mkdir -p client/Modules/GhostTask/bin
+	@ if [ -f client/Modules/GhostTask/src/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/GhostTask/bin/ghosttask.x64.o \
+			-c client/Modules/GhostTask/src/entry.c \
+			-DBOF && \
+		echo "  -> GhostTask OK"; \
+	fi
+	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
+		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
+		echo "  -> UacBonanza (7 UAC bypass BOFs) OK"; \
+	fi
 	@ mkdir -p $(REMOTEOPS_BIN)
 	@ for bof in $(REMOTEOPS_EXTRA_BOFS); do \
 		src=$(REMOTEOPS_SRC)/Remote/$$bof/entry.c; \

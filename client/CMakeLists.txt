@@ -96,6 +96,7 @@ set( HAVOC_INCLUDE
         include/UserInterface/Dialogs/About.hpp
         include/UserInterface/Dialogs/Connect.hpp
         include/UserInterface/Dialogs/Listener.hpp
+        include/UserInterface/Dialogs/UploadDialog.hpp
 
         # small widgets
         include/UserInterface/SmallWidgets/EventViewer.hpp
@@ -113,6 +114,7 @@ set( HAVOC_INCLUDE
         include/UserInterface/Widgets/ScriptManager.h
         include/UserInterface/Widgets/LootWidget.h
         include/UserInterface/Widgets/FileBrowser.hpp
+        include/UserInterface/Widgets/LiveDesktopWidget.hpp
         include/UserInterface/Widgets/Teamserver.hpp
         include/UserInterface/Widgets/Store.hpp
 
@@ -131,6 +133,7 @@ set(
         src/UserInterface/Dialogs/Connect.cc
         src/UserInterface/Dialogs/Listener.cc
         src/UserInterface/Dialogs/Payload.cc
+        src/UserInterface/Dialogs/UploadDialog.cc
 
         # Widgets
         src/UserInterface/Widgets/SessionTable.cc
@@ -143,6 +146,7 @@ set(
         src/UserInterface/Widgets/ScriptManager.cc
         src/UserInterface/Widgets/LootWidget.cc
         src/UserInterface/Widgets/FileBrowser.cc
+        src/UserInterface/Widgets/LiveDesktopWidget.cc
         src/UserInterface/Widgets/Teamserver.cc
         src/UserInterface/Widgets/Store.cc
         src/UserInterface/Widgets/ProcessList.cc

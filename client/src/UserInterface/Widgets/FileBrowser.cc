@@ -8,6 +8,7 @@
 #include <QMessageBox>
 #include <spdlog/spdlog.h>
 #include <Util/Base.hpp>
+#include <UserInterface/Dialogs/UploadDialog.hpp>
 
 static auto JoinAtIndex( QStringList list, int index, QString sep ) -> QString
 {
@@ -139,6 +140,13 @@ void FileBrowser::setupUi( QWidget* FileBrowser )
     MenuFileBrowserTable->addAction( "Remove",   this, &FileBrowser::onTableMenuRemove );
     MenuFileBrowserTable->addAction( "Reload",   this, &FileBrowser::onTableMenuReload );
     TableFileBrowser->addAction( MenuFileBrowserTable->menuAction() );
+
+    /* Menu shown when the user right-clicks empty space in the file table
+       (no item under the cursor). Upload targets the current directory. */
+    MenuFileBrowserBlank = new QMenu( this );
+    MenuFileBrowserBlank->setStyleSheet( MenuStyle );
+    MenuFileBrowserBlank->addAction( "Upload", this, &FileBrowser::onTableMenuUpload );
+    MenuFileBrowserBlank->addAction( "Mkdir",  this, &FileBrowser::onTableMenuMkdir );
 
     MenuFileBrowserTree  = new QMenu( this );
     MenuFileBrowserTree->setStyleSheet( MenuStyle );
@@ -384,9 +392,52 @@ void FileBrowser::onTableMenuDownload(){
 void FileBrowser::onTableContextMenu( const QPoint &pos )
 {
     if ( ! TableFileBrowser->itemAt( pos ) )
+    {
+        MenuFileBrowserBlank->popup( TableFileBrowser->viewport()->mapToGlobal( pos ) );
         return;
+    }
 
     MenuFileBrowserTable->popup( TableFileBrowser->horizontalHeader()->viewport()->mapToGlobal( pos ) );
+}
+
+void FileBrowser::onTableMenuUpload()
+{
+    QString currentDir = InputFileBrowserPath->text();
+
+    UploadDialog dlg( this, currentDir );
+    if ( dlg.exec() != QDialog::Accepted )
+        return;
+
+    QString localPath  = dlg.localFilePath();
+    QString remotePath = dlg.remotePath();
+
+    QByteArray content = FileRead( localPath );
+    if ( content.isEmpty() )
+    {
+        QMessageBox::warning( this, "Upload error",
+            "Failed to read local file or file is empty:\n" + localPath );
+        return;
+    }
+
+    for ( auto& Session : HavocX::Teamserver.Sessions )
+    {
+        if ( Session.Name.compare( SessionID ) == 0 )
+        {
+            QString TaskID = Session.InteractedWidget->TaskInfo(
+                true, Util::gen_random( 8 ).c_str(),
+                "Tasked demon to upload " + localPath + " -> " + remotePath );
+
+            Session.InteractedWidget->DemonCommands->Execute.FS(
+                TaskID, "upload",
+                remotePath.toLocal8Bit().toBase64() + ";" + content.toBase64() );
+
+            /* Refresh the current listing so the newly-uploaded file
+               shows up without another manual reload. */
+            TableClear();
+            ChangePathAndSendRequest( currentDir );
+            return;
+        }
+    }
 }
 
 void FileBrowser::onTreeContextMenu( const QPoint &pos )

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -1040,23 +1039,19 @@ func (a *Agent) PortFwdWrite(SocketID int, data []byte) error {
 }
 
 func (a *Agent) PortFwdRead(SocketID int) ([]byte, error) {
-	var (
-		data    = bytes.Buffer{}
-		PortFwd *PortFwd
-	)
-
-	PortFwd = a.PortFwdGet(SocketID)
+	PortFwd := a.PortFwdGet(SocketID)
 
 	if PortFwd != nil {
 		if PortFwd.Conn != nil {
-			/* read from our socket to the data buffer or return error */
-			_, err := io.Copy(&data, PortFwd.Conn)
+			buf := make([]byte, 0x10000)
+			n, err := PortFwd.Conn.Read(buf)
+			if n > 0 {
+				return buf[:n], nil
+			}
 			if err != nil {
 				return nil, err
 			}
-
-			/* return the read data */
-			return data.Bytes(), nil
+			return nil, nil
 		} else {
 			return nil, errors.New("rportfwd connection is empty")
 		}

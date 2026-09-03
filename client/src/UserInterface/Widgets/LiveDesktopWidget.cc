@@ -49,10 +49,21 @@ namespace
     }
 }
 
-// LZNT1 decompression — matches the shellcode's RtlCompressBuffer(COMPRESSION_FORMAT_LZNT1) output.
-// Each chunk has a 2-byte LE header: bit 15 = compressed flag, bits 0-11 = (size-1).
-// Compressed chunks use a flags byte per 8 tokens; bit=0 → literal, bit=1 → back-reference
-// (displacement/length split adapts based on output position within the chunk).
+// LZNT1 decompression — RtlCompressBuffer(COMPRESSION_FORMAT_LZNT1).
+//
+// Chunk header (2-byte LE): bit 15 = compressed, bits 12-14 = 011, bits 0-11 = (size-1).
+// Compressed chunks: flags byte per 8 tokens; bit=0 literal, bit=1 16-bit back-ref.
+//
+// Displacement bits are the min bits needed to encode the current write offset
+// inside the 4096-byte chunk, minimum 4:
+//     db = 4; while ( (1 << db) < pos ) db++;
+// Using bit_length(pos) / counting set bits of pos is off-by-one at every
+// power of two (16, 32, 64, …). Frame 1 is mostly stored uncompressed so the
+// BMP dump looked perfect; delta frames (long color-key runs) hit compressed
+// chunks and the live view went choppy the moment the desktop moved.
+//
+// Each chunk maps to a 4096-byte window. A non-final chunk that produces fewer
+// than 4096 bytes is zero-padded so the next chunk lands at the right offset.
 QByteArray LiveDesktopWidget::lznt1Decompress( const QByteArray& src )
 {
     QByteArray out;
@@ -70,51 +81,58 @@ QByteArray LiveDesktopWidget::lznt1Decompress( const QByteArray& src )
 
         int csz = ( hdr & 0xFFF ) + 1;
         int ce  = qMin( i + csz, end );
+        int cstart = out.size();
 
         if ( !( hdr & 0x8000 ) ) {
             out.append( reinterpret_cast<const char*>( s + i ), ce - i );
-            i = ce;
-            continue;
-        }
-
-        int cstart = out.size();
-        while ( i < ce )
-        {
-            if ( i >= end ) break;
-            quint8 flags = s[i]; i++;
-
-            for ( int bit = 0; bit < 8; bit++ )
+        } else {
+            int j = i;
+            while ( j < ce )
             {
-                if ( i >= ce ) break;
+                quint8 flags = s[j]; j++;
 
-                if ( !( flags & ( 1 << bit ) ) ) {
-                    out.append( static_cast<char>( s[i] ) );
-                    i++;
-                } else {
-                    if ( i + 1 >= end ) { i = ce; break; }
-                    quint16 tok = s[i] | ( s[i + 1] << 8 );
-                    i += 2;
+                for ( int bit = 0; bit < 8; bit++ )
+                {
+                    if ( j >= ce ) break;
 
-                    int pos = out.size() - cstart;
-                    if ( pos <= 0 ) continue;
+                    if ( !( flags & ( 1 << bit ) ) ) {
+                        out.append( static_cast<char>( s[j] ) );
+                        j++;
+                    } else {
+                        if ( j + 1 >= end ) { j = ce; break; }
+                        quint16 tok = s[j] | ( s[j + 1] << 8 );
+                        j += 2;
 
-                    int bl = 0;
-                    { int tmp = pos; while ( tmp ) { tmp >>= 1; bl++; } }
-                    int db = qMax( 4, bl );
+                        int pos = out.size() - cstart;
+                        if ( pos <= 0 ) continue;
 
-                    int lb = 16 - db;
-                    int ln = ( tok & ( ( 1 << lb ) - 1 ) ) + 3;
-                    int dp = ( tok >> lb ) + 1;
+                        int db = 4;
+                        while ( ( 1 << db ) < pos )
+                            db++;
+                        if ( db > 12 ) db = 12;
 
-                    for ( int j = 0; j < ln; j++ ) {
-                        int idx = out.size() - dp;
-                        out.append( ( idx >= 0 && idx < out.size() )
-                                    ? out.at( idx ) : '\0' );
+                        int lb = 16 - db;
+                        int ln = ( tok & ( ( 1 << lb ) - 1 ) ) + 3;
+                        int dp = ( tok >> lb ) + 1;
+
+                        for ( int n = 0; n < ln; n++ ) {
+                            int limit = out.size() - cstart;
+                            int idx = out.size() - dp;
+                            out.append( ( dp > 0 && dp <= limit && idx >= 0 && idx < out.size() )
+                                        ? out.at( idx ) : '\0' );
+                        }
                     }
                 }
             }
         }
-        i = qMax( i, ce );
+        i = ce;
+
+        int produced = out.size() - cstart;
+        if ( produced < 4096 && i + 1 < end ) {
+            quint16 nxt = s[i] | ( s[i + 1] << 8 );
+            if ( nxt != 0 )
+                out.append( QByteArray( 4096 - produced, '\0' ) );
+        }
     }
     return out;
 }
@@ -482,8 +500,22 @@ void LiveDesktopWidget::onDeskReadyRead()
                     pendingFW, pendingFH, pendingCompressedSize,
                     (int)raw.size(), rawSize, (int)raw.size() - rawSize );
 
-            if ( raw.size() < rawSize )
-                raw.append( QByteArray( rawSize - raw.size(), '\0' ) );
+            // Short output used to be zero-padded, which is NOT the color key,
+            // so mergePixelDiff painted black holes over the previous frame.
+            // Pad with the color key so missing bytes keep the last good pixel.
+            if ( raw.size() < rawSize ) {
+                int need = rawSize - raw.size();
+                QByteArray pad;
+                pad.resize( need );
+                for ( int n = 0; n + 2 < need; n += 3 ) {
+                    pad[n]     = static_cast<char>( kCK0 );
+                    pad[n + 1] = static_cast<char>( kCK1 );
+                    pad[n + 2] = static_cast<char>( kCK2 );
+                }
+                raw.append( pad );
+            } else if ( raw.size() > rawSize ) {
+                raw.truncate( rawSize );
+            }
 
             frameMutex.lock();
             if ( pixBuf.isEmpty() || frameW != pendingFW || frameH != pendingFH ) {
@@ -524,8 +556,9 @@ void LiveDesktopWidget::onDeskDisconnected()
 // Capture-side colour: the shellcode must CROP 1-3 px to DWORD-align 24-bpp
 // rows. StretchBlt+HALFTONE on that tiny "resize" dithers the whole frame
 // and is what made the live view look "almost the right colour".
-// On frame #1 the raw decompressed data is saved as /tmp/livedesktop_debug.bmp
-// for offline verification — the BMP is the exact bytes from LZNT1, no Qt processing.
+// Frame #1 dumps /tmp/livedesktop_debug.bmp (full framebuffer, pre-delta).
+// Frame #2 dumps /tmp/livedesktop_debug_f2.bmp (first merged delta) so motion
+// can be checked offline the same way.
 void LiveDesktopWidget::onRenderTick()
 {
     if ( ! frameDirty ) return;
@@ -548,8 +581,11 @@ void LiveDesktopWidget::onRenderTick()
 
     const uchar* bits = reinterpret_cast<const uchar*>( data.constData() );
 
-    if ( fc == 1 ) {
-        QFile bmp( "/tmp/livedesktop_debug.bmp" );
+    if ( fc == 1 || fc == 2 ) {
+        const char* path = ( fc == 1 )
+            ? "/tmp/livedesktop_debug.bmp"
+            : "/tmp/livedesktop_debug_f2.bmp";
+        QFile bmp( path );
         if ( bmp.open( QIODevice::WriteOnly ) ) {
             quint8 hdr[54] = {};
             hdr[0] = 'B'; hdr[1] = 'M';
@@ -567,7 +603,8 @@ void LiveDesktopWidget::onRenderTick()
             bmp.write( reinterpret_cast<const char*>( hdr ), 54 );
             bmp.write( data.constData(), sz );
             bmp.close();
-            qDebug( "LiveDesktop: saved /tmp/livedesktop_debug.bmp %dx%d stride=%d sz=%d", w, h, stride, sz );
+            qDebug( "LiveDesktop: saved %s %dx%d stride=%d sz=%d frame=%d",
+                    path, w, h, stride, sz, fc );
         }
     }
 

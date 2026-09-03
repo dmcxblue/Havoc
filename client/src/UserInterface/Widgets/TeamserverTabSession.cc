@@ -9,6 +9,7 @@
 #include <UserInterface/Widgets/Chat.hpp>
 #include <UserInterface/Widgets/LootWidget.h>
 #include <UserInterface/Widgets/FileBrowser.hpp>
+#include <UserInterface/Widgets/LiveDesktopWidget.hpp>
 
 #include <UserInterface/SmallWidgets/EventViewer.hpp>
 
@@ -227,6 +228,7 @@ void UserInterface::Widgets::TeamserverTabSession::handleDemonContextMenu( const
 
     SessionExplorer.addAction( "Process List" );
     SessionExplorer.addAction( "File Explorer" );
+    SessionExplorer.addAction( "Live Desktop" );
     SessionExplorer.setStyleSheet( MenuStyle );
 
     ExitMenu.addAction( "Thread" );
@@ -478,6 +480,18 @@ void UserInterface::Widgets::TeamserverTabSession::handleDemonContextMenu( const
                         {
                             HavocX::Teamserver.TabSession->NewBottomTab( Session.FileBrowser->FileBrowserWidget, TabName.toStdString(), "" );
                         }
+                    }
+                    else if ( action->text().compare( "Live Desktop" ) == 0 )
+                    {
+                        auto TabName = QString( "[" + SessionID + "] Live Desktop" );
+
+                        if ( Session.LiveDesktop == nullptr )
+                        {
+                            Session.LiveDesktop = new UserInterface::Widgets::LiveDesktopWidget;
+                            Session.LiveDesktop->setupUi( new QWidget );
+                            Session.LiveDesktop->SessionID = Session.Name;
+                        }
+                        HavocX::Teamserver.TabSession->NewBottomTab( Session.LiveDesktop->LiveDesktopTabWidget, TabName.toStdString() );
                     }
                 }
             }

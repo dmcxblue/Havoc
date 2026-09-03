@@ -1776,11 +1776,21 @@ VOID CommandAssemblyInlineExecute( PPARSER Parser )
 
         if ( ! DotnetExecute( AssemblyData, AssemblyArgs ) )
         {
-            PPACKAGE Package = PackageCreate( DEMON_COMMAND_ASSEMBLY_INLINE_EXECUTE );
-            PackageAddInt32( Package, DOTNET_INFO_FAILED );
-            PackageTransmit( Package );
-
-            DotnetClose();
+            /* DotnetExecute failed before or during Invoke_3.
+             *
+             * Rather than sending DOTNET_INFO_FAILED and tearing things
+             * down here, mark the request "invoked with a bad result" and
+             * let the main-loop DotnetPush() do exactly one cleanup pass
+             * (drain remaining pipe bytes, emit FINISHED/FAILED, close).
+             * This prevents double-send when DotnetExecute already set
+             * Invoked = TRUE for a mid-run failure. */
+            if ( Instance->Dotnet )
+            {
+                Instance->Dotnet->Invoked = TRUE;
+                if ( Instance->Dotnet->InvokeResult == S_OK ) {
+                    Instance->Dotnet->InvokeResult = E_FAIL;
+                }
+            }
         }
 
         PUTS( "Finished with Assembly inline execute" )

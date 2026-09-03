@@ -2,6 +2,7 @@
 
 #include <Havoc/DemonCmdDispatch.h>
 #include <UserInterface/Widgets/DemonInteracted.h>
+#include <UserInterface/Dialogs/UploadDialog.hpp>
 #include <Util/ColorText.h>
 #include <Havoc/Packager.hpp>
 
@@ -1832,8 +1833,35 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
             }
             else
             {
-                CONSOLE_ERROR( "Not enough arguments" )
-                return false;
+                /* No args → open the shared Upload dialog so the operator can
+                   browse for a local file and specify the remote path. */
+                UploadDialog dlg;
+                if ( dlg.exec() != QDialog::Accepted )
+                    return true;
+
+                auto FilePath   = dlg.localFilePath();
+                auto RemotePath = dlg.remotePath();
+                auto Content    = FileRead( FilePath );
+
+                if ( Content == nullptr )
+                {
+                    CONSOLE_ERROR( "Failed to read local file: " + FilePath )
+                    return false;
+                }
+
+                /* If the operator left the remote path as a bare directory
+                   (trailing separator), append the local basename. */
+                if ( RemotePath.endsWith( "\\", Qt::CaseInsensitive ) ||
+                     RemotePath.endsWith( "/",  Qt::CaseInsensitive ) )
+                {
+                    auto FileName = FilePath.mid( FilePath.lastIndexOf("/") + 1 );
+                    RemotePath    = RemotePath + FileName;
+                }
+
+                TaskID                     = CONSOLE_INFO( "Tasked demon to upload a file " + FilePath + " to " + RemotePath );
+                CommandInputList[ TaskID ] = commandline;
+
+                SEND( Execute.FS( TaskID, "upload", RemotePath.toLocal8Bit().toBase64() + ";" + Content.toBase64() ) )
             }
 
         }

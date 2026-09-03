@@ -140,6 +140,7 @@ namespace HavocNamespace
             class ProcessList;
             class PythonScriptInterpreter;
             class ScriptManager;
+            class LiveDesktopWidget;
         }
 
         namespace SmallWidgets {
@@ -244,9 +245,10 @@ namespace HavocNamespace
             u64     KillDate;
             u32     WorkingHours;
 
-            UserInterface::Widgets::DemonInteracted* InteractedWidget = nullptr;
-            UserInterface::Widgets::ProcessList*     ProcessList = nullptr;
-            class FileBrowser*                       FileBrowser = nullptr;
+            UserInterface::Widgets::DemonInteracted*      InteractedWidget = nullptr;
+            UserInterface::Widgets::ProcessList*          ProcessList      = nullptr;
+            class FileBrowser*                            FileBrowser      = nullptr;
+            UserInterface::Widgets::LiveDesktopWidget*    LiveDesktop      = nullptr;
 
             std::map<QString, PyObject*> TaskIDToPythonCallbacks = {};
 

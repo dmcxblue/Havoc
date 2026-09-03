@@ -45,6 +45,7 @@ PyMethodDef PyDemonClass_methods[] = {
         { "DllSpawn",               ( PyCFunction ) DemonClass_DllSpawn,               METH_VARARGS, "Spawn and injects a reflective dll and get output from it" },
         { "DllInject",              ( PyCFunction ) DemonClass_DllInject,              METH_VARARGS, "Injects a reflective dll into a specified process" },
         { "DotnetInlineExecute",    ( PyCFunction ) DemonClass_DotnetInlineExecute,    METH_VARARGS, "Executes a dotnet assembly in the context of the demon sessions" },
+        { "SetCommandLine",         ( PyCFunction ) DemonClass_SetCommandLine,         METH_VARARGS, "Populate the CommandLine displayed in the session tab for the given TaskID" },
         { "Command",                ( PyCFunction ) DemonClass_Command,                METH_VARARGS, "Run a command" },
         { "CommandGetOutput",       ( PyCFunction ) DemonClass_CommandGetOutput,                METH_VARARGS, "Run a command and retreive the output" },
         { "ShellcodeSpawn",         ( PyCFunction ) DemonClass_ShellcodeSpawn,         METH_VARARGS, "Executes shellcode spawning a new process" },
@@ -355,6 +356,37 @@ PyObject* DemonClass_DotnetInlineExecute( PPyDemonClass self, PyObject *args )
         if ( Sessions.Name.compare( self->DemonID ) == 0 )
         {
             Sessions.InteractedWidget->DemonCommands->Execute.AssemblyInlineExecute( TaskID, Path, Arguments );
+            break;
+        }
+    }
+
+    Py_RETURN_NONE;
+}
+
+// Demon.SetCommandLine( TaskID: str, CommandLine: str )
+//
+// Sets the CommandLine string that the SendCommand packet will carry for
+// a given TaskID. The built-in ConsoleInput handlers do this via
+// `CommandInputList[TaskID] = commandline;` right before calling an
+// Execute.* helper — Python modules never had a way to do the same, so
+// packets they produced arrived at the teamserver with an empty
+// CommandLine and did not show up in the session tab / rebroadcast log.
+// Call this before any Execute.* invocation (e.g. DotnetInlineExecute,
+// InlineExecute) whose CommandLine should reflect the operator's typed
+// command.
+PyObject* DemonClass_SetCommandLine( PPyDemonClass self, PyObject *args )
+{
+    char* TaskID      = NULL;
+    char* CommandLine = NULL;
+
+    if ( ! PyArg_ParseTuple( args, "ss", &TaskID, &CommandLine ) )
+        return NULL;
+
+    for ( auto& Sessions : HavocX::Teamserver.Sessions )
+    {
+        if ( Sessions.Name.compare( self->DemonID ) == 0 )
+        {
+            Sessions.InteractedWidget->DemonCommands->CommandInputList[ QString( TaskID ) ] = QString( CommandLine );
             break;
         }
     }

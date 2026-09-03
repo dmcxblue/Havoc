@@ -57,11 +57,13 @@ public:
 
     QMenu*                   MenuFileBrowserTable;
     QMenu*                   MenuFileBrowserTree;
+    QMenu*                   MenuFileBrowserBlank;
 
     // General
     QAction*                 MenuFileBrowserRemove;
     QAction*                 MenuFileBrowserMkdir;
     QAction*                 MenuFileBrowserReload;
+    QAction*                 MenuFileBrowserUpload;
 
     // Tree
     QAction*                 MenuFileBrowserListDrives;
@@ -116,6 +118,7 @@ private slots:
     void onTreeContextMenu( const QPoint &pos );
 
     void onTableMenuDownload();
+    void onTableMenuUpload();
     void onButtonUp();
     void onInputPath();
 };

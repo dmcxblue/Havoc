@@ -3,3 +3,4 @@
 BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments );
 VOID DotnetClose();
 VOID DotnetPush();
+VOID DotnetPushPipe();

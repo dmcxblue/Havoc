@@ -1,3 +1,9 @@
+# never commit Claude tooling metadata
+CLAUDE.md
+**/CLAUDE.md
+.claude/
+**/.claude/
+
 # ignore .idea
 */.idea/
 

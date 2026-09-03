@@ -672,9 +672,13 @@ typedef struct _DOTNET_ARGS
     HANDLE Pipe;
     HANDLE File;
     HANDLE StdOut;
+    HANDLE StdErr;
     HANDLE Thread;
     HANDLE Event;
     HANDLE Exit;
+
+    /* Result of the assembly's entry-point invocation (S_OK on success) */
+    HRESULT InvokeResult;
 
     /* Argument Array */
     UNICODE_STRING ArgumentArray;

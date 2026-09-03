@@ -39,12 +39,12 @@ Listeners {
     Http {
         Name         = "RTOLab"
         # Hosts = callback address(es) baked into the demon — set to an IP the target can reach
-        Hosts        = ["192.168.1.17"]
+        Hosts        = ["192.168.0.213"]
         # HostBind = local bind address; 0.0.0.0 listens on all interfaces regardless of assigned IP
-        HostBind     = "192.168.1.17"
+        HostBind     = "192.168.0.213"
         HostRotation = "round-robin"
-        PortBind     = 443
-        PortConn     = 443
+        PortBind     = 4434
+        PortConn     = 4434
         Secure       = true
         KillDate     = "2028-06-10 23:59:59"
         UserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"

