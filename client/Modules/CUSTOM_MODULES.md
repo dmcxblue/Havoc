@@ -369,6 +369,46 @@ compression for bandwidth; unchanged tiles are skipped between frames.
 
 ---
 
+## UacCheck — `client/Modules/UacCheck/`
+
+**Purpose.** Recon-only UAC bypass feasibility checker. Companion to
+`UacBonanza` — determines which UAC-BOF-Bonanza techniques would
+succeed on the current target **without executing any of them**.
+
+**How it works.** Gathers the target's environment once (OS version
+via `RtlGetVersion`, UAC policy from the registry, token integrity
+level, and admin group membership via `CheckTokenMembership(NULL,...)`),
+then evaluates each technique's specific preconditions: file existence
+(e.g. `ComputerDefaults.exe`, `fodhelper.exe`, `cmstp.exe`), registry
+key writability (`HKCU\Environment`, `HKCU\...\ms-settings\...\command`),
+COM CLSID presence in HKLM, and OS build-number gates.
+
+Reports `[+] LIKELY VIABLE -> uac-bypass <technique> ...` for each
+passing check, or `[-] NOT VIABLE` with the reason. Never modifies
+the target — read-only operations only.
+
+**Subcommands.**
+
+| Command | Description |
+|---------|-------------|
+| `uac-check all` | Environment info + all 7 technique checks |
+| `uac-check env` | OS, UAC settings, integrity level, admin status |
+| `uac-check trustedpath` | TrustedPathDLLHijack preconditions |
+| `uac-check silentcleanup` | SilentCleanupWinDir preconditions |
+| `uac-check sspidatagram` | SSPI Datagram Contexts preconditions |
+| `uac-check registrycommand` | fodhelper ms-settings hijack preconditions |
+| `uac-check elevatedcom` | CmstpElevatedCOM (ICMLuaUtil) preconditions |
+| `uac-check colordataproxy` | ColorDataProxy + ICMLuaUtil preconditions |
+| `uac-check editionupgrade` | EditionUpgradeManager COM preconditions |
+
+**Files.**
+- `uaccheck.py`
+- `src/entry.c` — compiled with `-Os -fno-builtin`
+- `bin/uaccheck.x64.o`
+- `UACCHECK.md` — detailed code walkthrough
+
+---
+
 ## Building
 
 Everything in this file is compiled by the top-level `makefile`

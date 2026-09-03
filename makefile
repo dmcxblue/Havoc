@@ -118,6 +118,14 @@ bof-build:
 			-DBOF && \
 		echo "  -> GhostTask OK"; \
 	fi
+	@ mkdir -p client/Modules/UacCheck/bin
+	@ if [ -f client/Modules/UacCheck/src/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/UacCheck/bin/uaccheck.x64.o \
+			-c client/Modules/UacCheck/src/entry.c \
+			-I client/Modules/RemoteOps/CS-Remote-OPs-BOF/src/common \
+			-DBOF -Os -fno-builtin && \
+		echo "  -> UacCheck OK"; \
+	fi
 	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
 		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
 		echo "  -> UacBonanza (7 UAC bypass BOFs) OK"; \

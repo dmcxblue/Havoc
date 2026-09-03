@@ -46,6 +46,7 @@ client/Modules/*
 !client/Modules/Icacls/
 !client/Modules/PrivKit/
 !client/Modules/LiveDesktop/
+!client/Modules/UacCheck/
 
 # OS files
 .DS_Store
