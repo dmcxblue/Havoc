@@ -47,6 +47,7 @@ client/Modules/*
 !client/Modules/PrivKit/
 !client/Modules/LiveDesktop/
 !client/Modules/UacCheck/
+!client/Modules/InvokeAssembly/
 
 # OS files
 .DS_Store
