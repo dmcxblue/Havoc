@@ -1561,13 +1561,21 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
                 auto Args = QString();
 
                 // dotnet inline-execute assembly.exe (args)
+                // The agent uses CommandLineToArgvW + skips argv[0], so
+                // prepend a dummy program name and re-quote any arg that
+                // contains spaces so the original grouping survives.
                 if ( InputCommands.size() > 3 )
                 {
-                    InputCommands[ 0 ] = "";
-                    InputCommands[ 1 ] = "";
-                    InputCommands[ 2 ] = "";
-
-                    Args = InputCommands.join( " " );
+                    QStringList argParts;
+                    argParts << "_";
+                    for ( int i = 3; i < InputCommands.size(); i++ )
+                    {
+                        if ( InputCommands[ i ].contains( ' ' ) )
+                            argParts << "\"" + InputCommands[ i ] + "\"";
+                        else
+                            argParts << InputCommands[ i ];
+                    }
+                    Args = argParts.join( " " );
                 }
 
                 if ( ! QFile::exists( File ) )
@@ -1591,6 +1599,16 @@ auto DemonCommands::DispatchCommand( bool Send, QString TaskID, const QString& c
             }
             else
             {
+                // Fall through to registered Python-plugin commands (e.g. `dotnet execute`).
+                // The final `else` branch normally prepends the prompt + task-info line for
+                // echo replays before hitting the CheckRegisteredCommands label; jumping
+                // straight to the label would skip that append, so mirror it here.
+                if ( ! Send && ! CommandTaskInfo[ TaskID ].isEmpty() )
+                {
+                    DemonConsole->AppendRaw();
+                    DemonConsole->AppendRaw( Prompt );
+                    DemonConsole->AppendRaw( Util::ColorText::Cyan( "[*]" ) + " " + Util::ColorText::Comment( "[" + TaskID + "]") + " " + Util::ColorText::Cyan( CommandTaskInfo[ TaskID ] ) );
+                }
                 goto CheckRegisteredCommands;
             }
         }

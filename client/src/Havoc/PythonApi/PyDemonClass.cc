@@ -529,18 +529,20 @@ PyObject* DemonClass_DllSpawn( PPyDemonClass self, PyObject *args )
     DllArgs       = PyBytes_AS_STRING( DllArgs );
     ArgsByteArray = QByteArray( DllArgs, ArgSize );
 
+    auto ResolvedPath = ResolveScriptAssetPath( QString( DllPath ) );
+
     for ( auto& Sessions : HavocX::Teamserver.Sessions )
     {
         if ( Sessions.Name.compare( self->DemonID ) == 0 )
         {
-            if ( FileRead( DllPath ) == nullptr )
+            if ( FileRead( ResolvedPath ).isEmpty() )
             {
                 Sessions.InteractedWidget->AppendRaw();
                 Sessions.InteractedWidget->TaskError( "Failed to open dll path: " + QString( DllPath ) );
             }
             else
             {
-                Sessions.InteractedWidget->DemonCommands->Execute.DllSpawn( TaskID, DllPath, ArgsByteArray );
+                Sessions.InteractedWidget->DemonCommands->Execute.DllSpawn( TaskID, ResolvedPath, ArgsByteArray );
             }
 
             break;
