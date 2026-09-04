@@ -54,6 +54,7 @@ client/Modules/*
 # OS files
 .DS_Store
 Thumbs.db
+.pearce/
 
 # Python bytecode
 __pycache__/
