@@ -10,7 +10,7 @@ VOID ParserNew( PPARSER parser, PCHAR buffer )
         return;
 
     if ( ! buffer )
-        return
+        return;
 
     memcpy( &Size, buffer, sizeof( UINT32 ) );
 

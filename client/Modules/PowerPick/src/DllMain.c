@@ -45,13 +45,13 @@ VOID ModuleInit()
     Instance.Modules.Msvcrt = LoadLibraryA( "Msvcrt" );
     if ( Instance.Modules.Msvcrt )
     {
-        Instance.Win32.printf = GetProcAddress( Instance.Modules.Msvcrt, "printf" );
+        Instance.Win32.printf = (void*)GetProcAddress( Instance.Modules.Msvcrt, "printf" );
     }
 
     Instance.Modules.Mscoree = LoadLibraryA( "Mscoree" );
     if ( Instance.Modules.Msvcrt )
     {
-        Instance.Win32.CLRCreateInstance = GetProcAddress( Instance.Modules.Mscoree, "CLRCreateInstance" );
+        Instance.Win32.CLRCreateInstance = (void*)GetProcAddress( Instance.Modules.Mscoree, "CLRCreateInstance" );
     }
 }
 
