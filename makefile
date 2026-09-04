@@ -126,6 +126,13 @@ bof-build:
 			-DBOF -Os -fno-builtin && \
 		echo "  -> UacCheck OK"; \
 	fi
+	@ mkdir -p client/Modules/Bitsadmin/bin
+	@ if [ -f client/Modules/Bitsadmin/src/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/Bitsadmin/bin/bitsadmin.x64.o \
+			-c client/Modules/Bitsadmin/src/entry.c \
+			-DBOF -Os -fno-builtin && \
+		echo "  -> Bitsadmin OK"; \
+	fi
 	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
 		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
 		echo "  -> UacBonanza (7 UAC bypass BOFs) OK"; \
