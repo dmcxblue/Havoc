@@ -109,8 +109,12 @@ VOID InvokeAssembly( PPARSER DataArgs )
     long idx[1] = { 0 };
     SafeArrayPutElement(psaStaticMethodArgs, idx, &vtPsa);
 
-    if ( pMethodInfo->lpVtbl->Invoke_3( pMethodInfo, obj, psaStaticMethodArgs, &retVal ) != S_OK )
+    HRESULT hrInvoke = pMethodInfo->lpVtbl->Invoke_3( pMethodInfo, obj, psaStaticMethodArgs, &retVal );
+    if ( hrInvoke != S_OK )
+    {
+        Instance.Win32.printf( "[-] PowerShell execution failed (HRESULT: 0x%08lx)\n", (unsigned long) hrInvoke );
         goto Cleanup;
+    }
 
 Cleanup:
     if ( NULL != psaStaticMethodArgs )

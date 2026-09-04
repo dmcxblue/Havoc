@@ -57,8 +57,40 @@ VOID ModuleInit()
 
 VOID ModuleMain( PVOID Params )
 {
+    HANDLE hOrigStdout = GetStdHandle( STD_OUTPUT_HANDLE );
+    HANDLE hOrigStderr = GetStdHandle( STD_ERROR_HANDLE );
+    HANDLE hPipeRead   = NULL;
+    HANDLE hPipeWrite  = NULL;
+
+    SECURITY_ATTRIBUTES sa = { sizeof( SECURITY_ATTRIBUTES ), NULL, TRUE };
+
+    if ( CreatePipe( &hPipeRead, &hPipeWrite, &sa, 0 ) )
+    {
+        SetStdHandle( STD_OUTPUT_HANDLE, hPipeWrite );
+        SetStdHandle( STD_ERROR_HANDLE,  hPipeWrite );
+    }
+
     PARSER Parser = { 0 };
     ParserNew( &Parser, Params );
-
     InvokeAssembly( &Parser );
+
+    if ( hPipeRead )
+    {
+        CloseHandle( hPipeWrite );
+
+        UCHAR buf[ 1024 ];
+        DWORD dwRead    = 0;
+        DWORD dwWritten = 0;
+
+        while ( ReadFile( hPipeRead, buf, sizeof( buf ), &dwRead, NULL ) && dwRead > 0 )
+        {
+            WriteFile( hOrigStdout, buf, dwRead, &dwWritten, NULL );
+            dwRead = 0;
+        }
+
+        CloseHandle( hPipeRead );
+    }
+
+    SetStdHandle( STD_OUTPUT_HANDLE, hOrigStdout );
+    SetStdHandle( STD_ERROR_HANDLE,  hOrigStderr );
 }
