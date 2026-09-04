@@ -8,6 +8,7 @@ COMPILER_x64 	= x86_64-w64-mingw32-gcc
 CFLAGS			=  -Os -fno-asynchronous-unwind-tables -shared -masm=intel
 CFLAGS 			+= -fno-ident -fpack-struct=8 -falign-functions=1
 CFLAGS  		+= -s -ffunction-sections -falign-jumps=1 -w
+CFLAGS			+= -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=return-mismatch
 CFLAGS			+= -falign-labels=1 -fPIC
 CFLAGS			+= -Wl,-s,--no-seh,--enable-stdcall-fixup
 CFLAGS			+= -l oleaut32 -l uuid

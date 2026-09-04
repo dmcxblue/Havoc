@@ -33,7 +33,7 @@ BOOL FindVersion( PVOID assembly, INT length )
 
 VOID InvokeAssembly( PPARSER DataArgs )
 {
-    SIZE_T  ArgumentsLen                = 0;
+    INT     ArgumentsLen                = 0;
     PUCHAR  Arguments                   = ParserGetBytes( DataArgs, &ArgumentsLen );
 
     WCHAR   wAppDomainName[ MAX_PATH ]  = { 0 };
@@ -73,7 +73,7 @@ VOID InvokeAssembly( PPARSER DataArgs )
     if ( pICorRuntimeHost->lpVtbl->CreateDomain( pICorRuntimeHost, wAppDomainName, NULL, &pAppDomainThunk ) != S_OK )
         goto Cleanup;
 
-    if ( pAppDomainThunk->lpVtbl->QueryInterface( pAppDomainThunk, &xIID_AppDomain, &pAppDomain ) != S_OK )
+    if ( pAppDomainThunk->lpVtbl->QueryInterface( pAppDomainThunk, &xIID_AppDomain, (void**)&pAppDomain ) != S_OK )
         goto Cleanup;
 
     if ( SafeArrayAccessData( pSafeArray, &pvData ) != S_OK )
@@ -94,7 +94,7 @@ VOID InvokeAssembly( PPARSER DataArgs )
 
     SAFEARRAY* psaStaticMethodArgs = SafeArrayCreateVector( VT_VARIANT, 0, 1 ); //Last field -> entryPoint == 1 is needed if Main(String[] args) 0 if Main()
 
-    DWORD   argumentCount;
+    int     argumentCount;
     LPWSTR* argumentsArray = CommandLineToArgvW( wArguments, &argumentCount );
 
     argumentsArray++;
