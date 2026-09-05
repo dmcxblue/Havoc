@@ -185,10 +185,10 @@ def sc_failure(demonID, *params):
 # ------------------------------------------------------------------ schtaskscreate
 def schtaskscreate(demonID, *params):
     demon = Demon(demonID)
-    if len(params) < 5:
+    if len(params) < 3:
         demon.ConsoleWrite(demon.CONSOLE_ERROR,
             "Usage: schtaskscreate <hostname> <taskpath> <local_xml_file> "
-            "<mode:1|2|3> <force:0|1>")
+            "[mode:0|1|2] [force:0|1]")
         return False
     try:
         with open(params[2], "r", encoding="utf-8") as fh:
@@ -197,12 +197,15 @@ def schtaskscreate(demonID, *params):
         demon.ConsoleWrite(demon.CONSOLE_ERROR,
             f"Failed to read XML file '{params[2]}': {e}")
         return False
-    mode  = _int(demon, params[3], "mode")
-    force = _int(demon, params[4], "force")
+    mode  = _int(demon, params[3], "mode")  if len(params) > 3 else 0
+    force = _int(demon, params[4], "force") if len(params) > 4 else 1
     if mode is None or force is None:
         return False
+    hostname = params[0].lstrip("\\")
+    if hostname == "." or hostname.lower() == "localhost":
+        hostname = ""
     packer = Packer()
-    packer.addWstr(params[0])
+    packer.addWstr(hostname)
     packer.addWstr(params[1])
     packer.addWstr(xml)
     packer.addint(mode)
@@ -353,7 +356,7 @@ RegisterCommand(sc_config,          "", "sc_config",          "Reconfigure an ex
   start_mode   0=boot 1=system 2=auto 3=manual 4=disabled""",                                                                                                  "\\\\host CoolSvc C:\\Windows\\Temp\\a.exe 0 3")
 RegisterCommand(sc_failure,         "", "sc_failure",         "Set the failure actions for an existing service",                                             0, """<hostname> <servicename> <reset_period_secs> <reboot_msg> <command> <num_actions> <actions>
   actions format: type/delayMS/type/delayMS/... (type: none|restart|reboot|runcmd)""",                                                                          "\\\\host CoolSvc 60 \"\" \"cmd /c whoami > C:\\a.txt\" 1 runcmd/0")
-RegisterCommand(schtaskscreate,     "", "schtaskscreate",     "Create a scheduled task from a local XML definition",                                         0, "<hostname> <taskpath> <local_xml_file> <mode:1|2|3> <force:0|1>",                                "\\\\host \\Microsoft\\Windows\\Foo /tmp/task.xml 1 1")
+RegisterCommand(schtaskscreate,     "", "schtaskscreate",     "Create a scheduled task from a local XML definition",                                         0, "<hostname> <taskpath> <local_xml_file> [mode:0|1|2] [force:0|1]",                                "\\\\host \\Microsoft\\Windows\\Foo /tmp/task.xml")
 RegisterCommand(schtasksdelete,     "", "schtasksdelete",     "Delete a scheduled task (or task folder)",                                                    0, "<hostname> <taskname> <is_folder:0|1>",                                                          "\\\\host \\Microsoft\\Windows\\Foo 0")
 RegisterCommand(schtasksrun,        "", "schtasksrun",        "Run an existing scheduled task on-demand",                                                    0, "<hostname> <taskname>",                                                                          "\\\\host \\Microsoft\\Windows\\Foo")
 RegisterCommand(schtasksstop,       "", "schtasksstop",       "Stop a currently-running scheduled task",                                                     0, "<hostname> <taskname>",                                                                          "\\\\host \\Microsoft\\Windows\\Foo")
