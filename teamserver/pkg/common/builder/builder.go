@@ -197,7 +197,7 @@ func NewBuilder(config BuilderConfig) *Builder {
 			"-fno-ident -fpack-struct=8 -falign-functions=1",
 			"-s -ffunction-sections -fdata-sections -falign-jumps=1 -w",
 			"-falign-labels=1 -fPIC",
-			"-Wl,-s,--no-seh,--enable-stdcall-fixup,--gc-sections",
+			"-Wl,--strip-debug,--no-seh,--enable-stdcall-fixup,--gc-sections",
 		}
 	}
 
