@@ -167,6 +167,20 @@ def sc_failure(demonID, *params):
     num_actions  = _int(demon, params[5], "num_actions")
     if reset_period is None or num_actions is None:
         return False
+    action_map = {"none": "0", "restart": "1", "reboot": "2", "runcmd": "3"}
+    parts = params[6].split("/")
+    translated = []
+    for i, tok in enumerate(parts):
+        if i % 2 == 0:
+            mapped = action_map.get(tok.lower())
+            if mapped is None:
+                demon.ConsoleWrite(demon.CONSOLE_ERROR,
+                    f"Unknown action type '{tok}'. Use: none, restart, reboot, runcmd")
+                return False
+            translated.append(mapped)
+        else:
+            translated.append(tok)
+    actions_str = "/".join(translated)
     packer = Packer()
     packer.addstr(params[0])
     packer.addstr(params[1])
@@ -174,7 +188,7 @@ def sc_failure(demonID, *params):
     packer.addstr(params[3])
     packer.addstr(params[4])
     packer.addshort(num_actions)
-    packer.addstr(params[6])
+    packer.addstr(actions_str)
     TaskID = demon.ConsoleWrite(demon.CONSOLE_TASK,
         f"Tasked demon to set failure actions for service {params[1]} on {params[0]}")
     demon.InlineExecute(TaskID, "go",
