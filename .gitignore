@@ -50,6 +50,9 @@ client/Modules/*
 !client/Modules/Bitsadmin/
 !client/Modules/PowerPick/
 !client/Modules/InvokeAssembly/
+!client/Modules/RemoteOps/
+client/Modules/RemoteOps/CS-Remote-OPs-BOF/
+!client/Modules/Packer/
 
 # OS files
 .DS_Store
