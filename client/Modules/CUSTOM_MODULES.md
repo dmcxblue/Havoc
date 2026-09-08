@@ -409,6 +409,63 @@ the target — read-only operations only.
 
 ---
 
+## WmiSubscriptions — `client/Modules/WmiSubscriptions/`
+
+**Purpose.** WMI Event Subscription persistence (T1546.003). Installs a
+*permanent* `CommandLineEventConsumer` + `__EventFilter` +
+`__FilterToConsumerBinding` triple in the local `root\subscription`
+namespace so a command fires automatically on a trigger — and survives
+reboots. Complements the existing `Jump-exec/WMI/EventSub` BOF, which is
+lateral-movement-only (remote namespace, throwaway ActiveScript consumer
+that self-deletes after 11 s).
+
+**Commands.**
+```
+wmisubs list
+wmisubs create <name> <command> --trigger startup|logon|process:<exe>|interval:<sec>|wql:"<query>"
+wmisubs remove <name> [--timer-id <id>]
+wmisubs clean
+```
+
+**How it works.** The Python wrapper resolves the trigger spec to a
+finished WQL string *before* the BOF runs (so the BOF only ever sees the
+final query), then packs `mode` + UTF-16LE strings via `Packer.addWstr`.
+The C++ BOF (`wbemcli.h`, g++ not gcc) does the standard WMI dance:
+`CoInitializeEx` → `CoCreateInstance(WbemLocator)` →
+`ConnectServer("root\\subscription")` → `CoSetProxyBlanket`, then:
+
+- **create** — `GetObject`+`SpawnInstance`+`PutInstance(CREATE_OR_UPDATE)`
+  for `__EventFilter` (Name/QueryLanguage/Query), then
+  `CommandLineEventConsumer` (Name/CommandLineTemplate), then
+  `__FilterToConsumerBinding` (Consumer+Filter as `CIM_REFERENCE` object
+  paths). `interval:` triggers add an `__IntervalTimerInstruction`
+  (TimerId + IntervalBetweenEvents). Re-running with the same name
+  idempotently overwrites.
+- **list** — `ExecQuery("SELECT * FROM <class>")` over the five classes
+  and prints Name/Query/Command/Path per instance.
+- **remove** — `DeleteInstance` in order: binding → consumer → filter →
+  timer, using the fully-escaped `__RELPATH`.
+- **clean** — enumerate + delete every instance in all five classes
+  (bindings first).
+
+The consumer runs the command as **SYSTEM**.
+
+**Build gotcha — `-mno-stack-arg-probe` is required.** The BOF keeps wide
+string buffers on the stack (`wchar_t path[2048]`, `ref[1024]`); without
+the flag g++ emits `___chkstk_ms` (libgcc stack-probe helper) which the
+demon BOF loader cannot resolve. With it, `nm -u` shows only `__imp_*`
+imports — same profile as EventSub. Written C-style (no STL/exceptions/RTTI)
+so the object stays self-contained.
+
+**Files.**
+- `wmisubscriptions.py` — dispatcher, trigger→WQL resolution
+- `src/wmisubscriptions.cpp` — the BOF
+- `include/beacon.h` — BOF API decls (BeaconDataParse/BeaconPrintf)
+- `bin/wmisubscriptions.x64.o` — compiled with `-mno-stack-arg-probe`
+- `WMISUBS.md` — detailed design doc + wire protocol
+
+---
+
 ## Building
 
 Everything in this file is compiled by the top-level `makefile`

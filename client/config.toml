@@ -30,5 +30,6 @@ files = [
   "client/Modules/GhostTask/ghosttask.py",
   "client/Modules/UacBonanza/uacbonanza.py",
   "client/Modules/UacCheck/uaccheck.py",
-  "client/Modules/Bitsadmin/bitsadmin.py"
+  "client/Modules/Bitsadmin/bitsadmin.py",
+  "client/Modules/WmiSubscriptions/wmisubscriptions.py"
 ]
