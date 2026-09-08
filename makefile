@@ -60,6 +60,7 @@ client-cleanup:
 
 MINGW_CC     = x86_64-w64-mingw32-gcc
 MINGW_CC_x86 = i686-w64-mingw32-gcc
+MINGW_CCXX   = x86_64-w64-mingw32-g++
 
 # CS-Remote-OPs-BOF extras registered by client/Modules/RemoteOps/RemoteOpsExtra.py
 # The vendored source tree is left untouched — we only compile from it into
@@ -132,6 +133,13 @@ bof-build:
 			-c client/Modules/Bitsadmin/src/entry.c \
 			-DBOF -Os -fno-builtin && \
 		echo "  -> Bitsadmin OK"; \
+	fi
+	@ mkdir -p client/Modules/WmiSubscriptions/bin
+	@ if [ -f client/Modules/WmiSubscriptions/src/wmisubscriptions.cpp ]; then \
+		$(MINGW_CCXX) -o client/Modules/WmiSubscriptions/bin/wmisubscriptions.x64.o \
+			-c client/Modules/WmiSubscriptions/src/wmisubscriptions.cpp \
+			-I client/Modules/WmiSubscriptions/include -Os -w -mno-stack-arg-probe && \
+		echo "  -> WmiSubscriptions OK"; \
 	fi
 	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
 		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
