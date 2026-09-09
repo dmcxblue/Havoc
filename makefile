@@ -141,6 +141,13 @@ bof-build:
 			-I client/Modules/WmiSubscriptions/include -Os -w -mno-stack-arg-probe && \
 		echo "  -> WmiSubscriptions OK"; \
 	fi
+	@ mkdir -p client/Modules/Gpresult/bin
+	@ if [ -f client/Modules/Gpresult/src/entry.cpp ]; then \
+		$(MINGW_CCXX) -o client/Modules/Gpresult/bin/gpresult.x64.o \
+			-c client/Modules/Gpresult/src/entry.cpp \
+			-I client/Modules/Gpresult/include -Os -w -mno-stack-arg-probe && \
+		echo "  -> Gpresult OK"; \
+	fi
 	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
 		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
 		echo "  -> UacBonanza (7 UAC bypass BOFs) OK"; \

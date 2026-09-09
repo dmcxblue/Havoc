@@ -466,6 +466,38 @@ so the object stays self-contained.
 
 ---
 
+## Gpresult — `client/Modules/Gpresult/`
+
+**Purpose.** Report Resultant Set of Policy (RSoP) without spawning
+`gpresult.exe` — the applied GPOs, filtered-out GPOs, security groups, and
+OS/domain header info, pulled straight from the RSoP WMI provider
+(`root\rsop\user` + `root\rsop\computer`).
+
+**Commands.** `gpresult` (user+computer, matches `gpresult /R`),
+`gpresult user`, `gpresult computer`.
+
+**How it works.** C++ BOF (g++, `wbemcli.h` COM — same substrate as
+WmiSubscriptions). Gathers the header once via WinAPI
+(`GetComputerNameExA`, `DsGetDcNameA`, `RtlGetVersion`, `GetUserNameExA`,
+ProductOptions registry, `%USERPROFILE%`), then queries `RSOP_Session`
+(`targetName`/`creationTime`/`slowLink`/`SecurityGroups[]`) and `RSOP_GPO`
+(`name`/`enabled`/`filterAllowed`/`accessDenied`) per namespace. Security
+groups are `string[]` SIDs, each resolved to `DOMAIN\Name` via
+`ConvertStringSidToSidA` + `LookupAccountSidA` (raw-SID fallback). Domain
+functional level is a best-effort remote `Win32_OperatingSystem.Version`
+query against the DC.
+
+**Files.**
+- `gpresult.py` — dispatcher, mode int
+- `src/entry.cpp` — the BOF (single-buffered `BeaconOutput`, BSTR-correct WMI)
+- `include/beacon.h`, `makefile`, `bin/gpresult.x64.o`, `GPRESULT.md`
+
+**Build gotcha (same as WmiSubscriptions):** `-mno-stack-arg-probe` (else
+`___chkstk_ms` fails to resolve), and every WMI string must be a real `BSTR`
+via `SysAllocString`/`SysFreeString`.
+
+---
+
 ## Building
 
 Everything in this file is compiled by the top-level `makefile`
