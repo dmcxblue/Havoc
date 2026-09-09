@@ -1,6 +1,6 @@
 # Lessons
 
-Read at the start of every session. Rules here override CLAUDE.md. Append only; correct with a dated note. Consolidate into Principles when the file passes 100 lines.
+Read at the start of every session. Append only; correct with a dated note. Consolidate into Principles when the file passes 100 lines.
 
 ## Principles
 <consolidated ALWAYS / NEVER rules, newest last>
