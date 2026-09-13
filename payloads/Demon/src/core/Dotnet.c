@@ -14,6 +14,10 @@
  * that we don't burn CPU. */
 #define DOTNET_DRAIN_INTERVAL_MS 100
 
+/* Bounded join window for the invoke worker thread after WaitForSingleObjectEx
+ * itself failed. See the WAIT_FAILED arm of the drain loop. */
+#define DOTNET_JOIN_TIMEOUT_MS 5000
+
 GUID xCLSID_CLRMetaHost     = { 0x9280188d, 0xe8e,  0x4867, { 0xb3, 0xc,  0x7f, 0xa8, 0x38, 0x84, 0xe8, 0xde } };
 GUID xCLSID_CorRuntimeHost  = { 0xcb2f6723, 0xab3a, 0x11d2, { 0x9c, 0x40, 0x00, 0xc0, 0x4f, 0xa3, 0x0a, 0x3e } };
 GUID xIID_AppDomain         = { 0x05F696DC, 0x2B29, 0x3663, { 0xAD, 0x8B, 0xC4, 0x38, 0x9C, 0xF2, 0xA7, 0x13 } };
@@ -364,6 +368,23 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
             if ( WaitResult == WAIT_FAILED )
             {
                 PRINTF( "WaitForSingleObjectEx failed: %d\n", NtGetLastError() )
+
+                /* We can no longer observe the worker thread, but it is still
+                 * running and still referencing the CLR interfaces, SafeArray
+                 * and pipe that DotnetClose() is about to free. Try one more
+                 * bounded wait; if the thread still will not exit, remember
+                 * that so teardown refuses to free live state. */
+                WaitResult = Instance->Win32.WaitForSingleObjectEx(
+                    Instance->Dotnet->Thread,
+                    DOTNET_JOIN_TIMEOUT_MS,
+                    FALSE );
+
+                if ( WaitResult != WAIT_OBJECT_0 )
+                {
+                    PRINTF( "Invoke thread did not exit (%d): marking state as leaked\n", WaitResult )
+                    Instance->Dotnet->ThreadLeaked = TRUE;
+                }
+
                 break;
             }
         }
@@ -497,6 +518,17 @@ VOID DotnetClose()
 {
     if ( ! Instance->Dotnet )
         return;
+
+    /* The invoke worker thread outlived our join window, so it may still be
+     * dereferencing Instance->Dotnet, the CLR interfaces and the SafeArray.
+     * Releasing any of that from here would be a use-after-free inside the
+     * beacon, so drop the pointer and let process teardown reclaim it. */
+    if ( Instance->Dotnet->ThreadLeaked )
+    {
+        PRINTF( "DotnetClose: invoke thread still running, leaking DOTNET_ARGS to avoid UAF\n" )
+        Instance->Dotnet = NULL;
+        return;
+    }
 
 #ifndef DEBUG
     Instance->Win32.FreeConsole();
