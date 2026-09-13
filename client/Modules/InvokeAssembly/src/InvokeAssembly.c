@@ -1,5 +1,8 @@
 #include <InvokeAssembly.h>
 
+extern HANDLE g_hPipeOut;
+extern HANDLE g_hPipeErr;
+
 GUID xCLSID_CLRMetaHost     = { 0x9280188d, 0xe8e,  0x4867, { 0xb3, 0xc,  0x7f, 0xa8, 0x38, 0x84, 0xe8, 0xde } };
 GUID xCLSID_CorRuntimeHost  = { 0xcb2f6723, 0xab3a, 0x11d2, { 0x9c, 0x40, 0x00, 0xc0, 0x4f, 0xa3, 0x0a, 0x3e } };
 GUID xIID_AppDomain         = { 0x05F696DC, 0x2B29, 0x3663, { 0xAD, 0x8B, 0xC4, 0x38, 0x9C, 0xF2, 0xA7, 0x13 } };
@@ -30,12 +33,95 @@ BOOL FindVersion( PVOID assembly, INT length )
     return 0;
 }
 
+VOID RedirectConsoleOutput( AppDomain* pDomain )
+{
+    Assembly*   pMscorlib    = NULL;
+    Type*       pConsoleType = NULL;
+    Type*       pSWType      = NULL;
+    HRESULT     hr;
+    LONG        zero         = 0;
+    VARIANT     vEmpty       = { 0 };
+    vEmpty.vt = VT_EMPTY;
+
+    typedef HRESULT (STDMETHODCALLTYPE *fn_Load_2)( AppDomain*, BSTR, Assembly** );
+    fn_Load_2 pfnLoad2 = (fn_Load_2) pDomain->lpVtbl->dummy_Load_2;
+
+    BSTR bstr = SysAllocString( L"mscorlib" );
+    hr = pfnLoad2( pDomain, bstr, &pMscorlib );
+    SysFreeString( bstr );
+    if ( hr != S_OK || ! pMscorlib ) return;
+
+    bstr = SysAllocString( L"System.Console" );
+    hr = pMscorlib->lpVtbl->GetType_2( pMscorlib, bstr, &pConsoleType );
+    SysFreeString( bstr );
+    if ( hr != S_OK || ! pConsoleType ) goto done;
+
+    bstr = SysAllocString( L"System.IO.StreamWriter" );
+    hr = pMscorlib->lpVtbl->GetType_2( pMscorlib, bstr, &pSWType );
+    SysFreeString( bstr );
+    if ( hr != S_OK || ! pSWType ) goto done;
+
+    SAFEARRAY* pNoArgs = SafeArrayCreateVector( VT_VARIANT, 0, 0 );
+
+    BSTR names[4];
+    names[0] = SysAllocString( L"OpenStandardOutput" );
+    names[1] = SysAllocString( L"OpenStandardError" );
+    names[2] = SysAllocString( L"SetOut" );
+    names[3] = SysAllocString( L"SetError" );
+
+    for ( int ch = 0; ch < 2; ch++ )
+    {
+        VARIANT vStream = { 0 };
+        hr = pConsoleType->lpVtbl->InvokeMember_3( pConsoleType, names[ch],
+            BindingFlags_InvokeMethod | BindingFlags_Static | BindingFlags_Public,
+            NULL, vEmpty, pNoArgs, &vStream );
+        if ( hr != S_OK ) continue;
+
+        SAFEARRAY* pCtorArgs = SafeArrayCreateVector( VT_VARIANT, 0, 1 );
+        SafeArrayPutElement( pCtorArgs, &zero, &vStream );
+        VARIANT vWriter = { 0 };
+        bstr = SysAllocString( L"" );
+        hr = pSWType->lpVtbl->InvokeMember_3( pSWType, bstr,
+            BindingFlags_CreateInstance | BindingFlags_Public | BindingFlags_Instance,
+            NULL, vEmpty, pCtorArgs, &vWriter );
+        SysFreeString( bstr );
+        SafeArrayDestroy( pCtorArgs );
+        if ( hr != S_OK ) continue;
+
+        SAFEARRAY* pPropArgs = SafeArrayCreateVector( VT_VARIANT, 0, 1 );
+        VARIANT vTrue = { 0 }; vTrue.vt = VT_BOOL; vTrue.boolVal = VARIANT_TRUE;
+        SafeArrayPutElement( pPropArgs, &zero, &vTrue );
+        VARIANT vDummy = { 0 };
+        bstr = SysAllocString( L"AutoFlush" );
+        pSWType->lpVtbl->InvokeMember_3( pSWType, bstr,
+            BindingFlags_SetProperty | BindingFlags_Public | BindingFlags_Instance,
+            NULL, vWriter, pPropArgs, &vDummy );
+        SysFreeString( bstr );
+        SafeArrayDestroy( pPropArgs );
+
+        SAFEARRAY* pSetArgs = SafeArrayCreateVector( VT_VARIANT, 0, 1 );
+        SafeArrayPutElement( pSetArgs, &zero, &vWriter );
+        pConsoleType->lpVtbl->InvokeMember_3( pConsoleType, names[2 + ch],
+            BindingFlags_InvokeMethod | BindingFlags_Static | BindingFlags_Public,
+            NULL, vEmpty, pSetArgs, &vDummy );
+        SafeArrayDestroy( pSetArgs );
+    }
+
+    for ( int i = 0; i < 4; i++ ) SysFreeString( names[i] );
+    SafeArrayDestroy( pNoArgs );
+
+done:
+    if ( pSWType )      pSWType->lpVtbl->Release( pSWType );
+    if ( pConsoleType )  pConsoleType->lpVtbl->Release( pConsoleType );
+    if ( pMscorlib )     pMscorlib->lpVtbl->Release( pMscorlib );
+}
+
 VOID InvokeAssembly( PPARSER DataArgs )
 {
-    SIZE_T  AppDomainNameSize           = 0;
-    SIZE_T  NetVersionSize              = 0;
-    SIZE_T  assemblyBytesLen            = 0;
-    SIZE_T  ArgumentsLen                = 0;
+    INT     AppDomainNameSize           = 0;
+    INT     NetVersionSize              = 0;
+    INT     assemblyBytesLen            = 0;
+    INT     ArgumentsLen                = 0;
 
     PUCHAR  AppDomainName               = ParserGetBytes( DataArgs, &AppDomainNameSize );
     PUCHAR  NetVersion                  = ParserGetBytes( DataArgs, &NetVersionSize );
@@ -66,13 +152,15 @@ VOID InvokeAssembly( PPARSER DataArgs )
     CharStringToWCharString( wNetVersion, NetVersion, NetVersionSize );
     CharStringToWCharString( wArguments, Arguments, ArgumentsLen );
 
-    if ( assemblyBytes == NULL )
+    if ( assemblyBytes == NULL || assemblyBytesLen == 0 ) {
+        Instance.Win32.printf( "[-] No assembly data received\n" );
         return;
+    }
 
     // Hosting CLR
     if ( ! W32CreateClrInstance( wNetVersion, &pClrMetaHost, &pClrRuntimeInfo, &pICorRuntimeHost ) )
     {
-        Instance.Win32.printf( "[-] Couldn't start CLR \n" );
+        Instance.Win32.printf( "[-] Couldn't start CLR\n" );
         return;
     }
 
@@ -81,31 +169,53 @@ VOID InvokeAssembly( PPARSER DataArgs )
     rgsabound[0].lLbound = 0;
     SAFEARRAY* pSafeArray = SafeArrayCreate(VT_UI1, 1, rgsabound);
 
-    if ( pICorRuntimeHost->lpVtbl->CreateDomain( pICorRuntimeHost, wAppDomainName, NULL, &pAppDomainThunk ) != S_OK )
+    if ( ! pSafeArray ) {
+        Instance.Win32.printf( "[-] SafeArrayCreate failed\n" );
         goto Cleanup;
+    }
 
-    if ( pAppDomainThunk->lpVtbl->QueryInterface( pAppDomainThunk, &xIID_AppDomain, &pAppDomain ) != S_OK )
-        goto Cleanup;
+    HRESULT hr;
 
-    if ( SafeArrayAccessData( pSafeArray, &pvData ) != S_OK )
+    hr = pICorRuntimeHost->lpVtbl->CreateDomain( pICorRuntimeHost, wAppDomainName, NULL, &pAppDomainThunk );
+    if ( hr != S_OK ) {
+        Instance.Win32.printf( "[-] CreateDomain failed (0x%08X)\n", (unsigned int)hr );
         goto Cleanup;
+    }
+
+    hr = pAppDomainThunk->lpVtbl->QueryInterface( pAppDomainThunk, &xIID_AppDomain, &pAppDomain );
+    if ( hr != S_OK ) {
+        Instance.Win32.printf( "[-] QueryInterface failed (0x%08X)\n", (unsigned int)hr );
+        goto Cleanup;
+    }
+
+    hr = SafeArrayAccessData( pSafeArray, &pvData );
+    if ( hr != S_OK ) {
+        Instance.Win32.printf( "[-] SafeArrayAccessData failed (0x%08X)\n", (unsigned int)hr );
+        goto Cleanup;
+    }
 
     MemCopy(pvData, assemblyBytes, assemblyBytesLen);
 
-    if ( SafeArrayUnaccessData( pSafeArray ) != S_OK )
-        Instance.Win32.printf("[-] SafeArrayUnaccessData: Failed\n");
+    hr = SafeArrayUnaccessData( pSafeArray );
+    if ( hr != S_OK )
+        Instance.Win32.printf("[-] SafeArrayUnaccessData failed (0x%08X)\n", (unsigned int)hr);
 
-    if ( pAppDomain->lpVtbl->Load_3( pAppDomain, pSafeArray, &pAssembly ) != S_OK )
+    hr = pAppDomain->lpVtbl->Load_3( pAppDomain, pSafeArray, &pAssembly );
+    if ( hr != S_OK ) {
+        Instance.Win32.printf( "[-] Load_3 failed (0x%08X)\n", (unsigned int)hr );
         goto Cleanup;
+    }
 
-    if ( pAssembly->lpVtbl->EntryPoint( pAssembly, &pMethodInfo ) != S_OK )
+    if ( pAssembly->lpVtbl->EntryPoint( pAssembly, &pMethodInfo ) != S_OK ) {
+        Instance.Win32.printf( "[-] EntryPoint retrieval failed\n" );
         goto Cleanup;
+    }
 
     obj.vt = VT_NULL;
 
-    SAFEARRAY* psaStaticMethodArgs = SafeArrayCreateVector( VT_VARIANT, 0, 1 ); //Last field -> entryPoint == 1 is needed if Main(String[] args) 0 if Main()
+    SAFEARRAY* psaStaticMethodArgs = SafeArrayCreateVector( VT_VARIANT, 0, 1 );
 
-    DWORD   argumentCount;
+    int     argumentCount;
     LPWSTR* argumentsArray = CommandLineToArgvW( wArguments, &argumentCount );
 
     argumentsArray++;
@@ -114,15 +224,25 @@ VOID InvokeAssembly( PPARSER DataArgs )
     vtPsa.vt = ( VT_ARRAY | VT_BSTR );
     vtPsa.parray = SafeArrayCreateVector( VT_BSTR, 0, argumentCount );
 
-    for ( INT i = 0; i <= argumentCount; i++ )
+    for ( LONG i = 0; i < argumentCount; i++ )
         SafeArrayPutElement( vtPsa.parray, &i, SysAllocString( argumentsArray[ i ] ) );
 
     long idx[1] = { 0 };
     SafeArrayPutElement(psaStaticMethodArgs, idx, &vtPsa);
 
-    if ( pMethodInfo->lpVtbl->Invoke_3( pMethodInfo, obj, psaStaticMethodArgs, &retVal ) != S_OK )
-        goto Cleanup;
+    /* Ensure STD_OUTPUT_HANDLE points to the pipe, not the console.
+     * CLR init may have changed it. */
+    if ( g_hPipeOut && g_hPipeOut != INVALID_HANDLE_VALUE )
+        SetStdHandle( (DWORD)-11, g_hPipeOut );
+    if ( g_hPipeErr && g_hPipeErr != INVALID_HANDLE_VALUE )
+        SetStdHandle( (DWORD)-12, g_hPipeErr );
 
+    RedirectConsoleOutput( pAppDomain );
+
+    if ( pMethodInfo->lpVtbl->Invoke_3( pMethodInfo, obj, psaStaticMethodArgs, &retVal ) != S_OK ) {
+        Instance.Win32.printf( "[-] Invoke_3 failed\n" );
+        goto Cleanup;
+    }
 
 
 Cleanup:
@@ -191,25 +311,25 @@ BOOL W32CreateClrInstance( LPCWSTR dotNetVersion, PICLRMetaHost *ppClrMetaHost, 
                 }
                 else
                 {
-                    Instance.Win32.printf("[-] ( GetInterface ) Process refusing to get interface of %ls CLR version.  Try running an assembly that requires a different CLR version.\n", dotNetVersion);
+                    Instance.Win32.printf("[-] GetInterface failed for %ls CLR version\n", dotNetVersion);
                     return 0;
                 }
             }
             else
             {
-                Instance.Win32.printf("[-] ( IsLoadable ) Process refusing to load %ls CLR version.  Try running an assembly that requires a different CLR version.\n", dotNetVersion);
+                Instance.Win32.printf("[-] IsLoadable failed for %ls CLR version\n", dotNetVersion);
                 return 0;
             }
         }
         else
         {
-            Instance.Win32.printf("[-] ( GetRuntime ) Process refusing to get runtime of %ls CLR version.  Try running an assembly that requires a different CLR version.\n", dotNetVersion);
+            Instance.Win32.printf("[-] GetRuntime failed for %ls CLR version\n", dotNetVersion);
             return 0;
         }
     }
     else
     {
-        Instance.Win32.printf("[-] ( CLRCreateInstance ) Process refusing to create %ls CLR version.  Try running an assembly that requires a different CLR version.\n", dotNetVersion);
+        Instance.Win32.printf("[-] CLRCreateInstance failed for %ls CLR version\n", dotNetVersion);
         return 0;
     }
 

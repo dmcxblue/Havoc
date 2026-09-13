@@ -4173,9 +4173,15 @@ func (a *Agent) TaskDispatch(RequestID uint32, CommandID uint32, Parser *parser.
 			case DOTNET_INFO_FAILED:
 				logger.Debug(fmt.Sprintf("Agent: %x, Command: COMMAND_ASSEMBLY_INLINE_EXECUTE - DOTNET_INFO_FAILED", AgentID))
 
+				errMsg := "Failed to execute assembly or initialize the clr"
+				if Parser.CanIRead([]parser.ReadType{parser.ReadBytes}) {
+					if detail := Parser.ParseUTF16String(); len(detail) > 0 {
+						errMsg = detail
+					}
+				}
 				Message = map[string]string{
 					"Type":    "Error",
-					"Message": "Failed to execute assembly or initialize the clr",
+					"Message": errMsg,
 				}
 				a.RequestCompleted(RequestID)
 				break

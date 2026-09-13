@@ -703,6 +703,9 @@ typedef struct _DOTNET_ARGS
     /* Successful invoked ? */
     BOOL Invoked;
 
+    /* Step-specific error detail (wide string literal, do not free) */
+    BUFFER ErrorDetail;
+
     /* Contexts */
     PCONTEXT RopInit;
     PCONTEXT RopInvk;
