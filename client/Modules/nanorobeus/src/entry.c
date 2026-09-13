@@ -14,6 +14,7 @@
 #include "krb5.c"
 #include "tgtdeleg.c"
 #include "kerberoast.c"
+#include "asreproast.c"
 #else
 #include "common.h"
 #include "luid.h"
@@ -25,6 +26,7 @@
 #include "krb5.h"
 #include "tgtdeleg.h"
 #include "kerberoast.h"
+#include "asreproast.h"
 #endif
 
 void execute(WCHAR** dispatch, char* command, char* arg1, char* arg2, char* arg3, char* arg4);
@@ -231,6 +233,15 @@ void execute(WCHAR** dispatch, char* command, char* arg1, char* arg2, char* arg3
         /* arg1: SPN (contains '/') or sAMAccountName (or "" for all);
            arg2: optional username to bake into the hash (literal-SPN mode only). */
         execute_kerberoast(dispatch, arg1, arg2);
+    } else if (MSVCRT$strcmp(command, "asreproast") == 0) {
+        /* arg1: username (or "" to enumerate via LDAP);
+           arg2: etype as decimal string ("23" default, "17", "18"). */
+        int etype = 23;
+        if (MSVCRT$strcmp(arg2, "") != 0) {
+            etype = (int)MSVCRT$strtol(arg2, NULL, 10);
+            if (etype != 17 && etype != 18 && etype != 23) etype = 23;
+        }
+        execute_asreproast(dispatch, (arg1 && arg1[0]) ? arg1 : NULL, etype);
     } else if (MSVCRT$strcmp(command, "help") == 0) {
         PRINT(dispatch, "[*] nanorobeus 0.0.3\n[*] Command list:\n");
         PRINT(dispatch, "\tluid\n");
@@ -241,6 +252,7 @@ void execute(WCHAR** dispatch, char* command, char* arg1, char* arg2, char* arg3
         PRINT(dispatch, "\tpurge    [/luid <0x0>]\n");
         PRINT(dispatch, "\ttgtdeleg <SPN>\n");
         PRINT(dispatch, "\tkerberoast [<username> | <SPN> [<username>]]\n");
+        PRINT(dispatch, "\tasreproast [<username>] [--etype 17|18|23]\n");
     } else {
         PRINT(dispatch, "[!] Unknown command.\n");
     }

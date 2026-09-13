@@ -1,6 +1,8 @@
 #pragma once
 #define SECURITY_WIN32
 
+#include <winsock2.h>
+#include <dsgetdc.h>
 #include <windows.h>
 #include <ntsecapi.h>
 #include <sddl.h>
@@ -135,6 +137,23 @@ WINBASEAPI SECURITY_STATUS WINAPI SECUR32$FreeContextBuffer(void* pvContextBuffe
 KSECDDDECLSPEC SECURITY_STATUS WINAPI SECUR32$DeleteSecurityContext(PCtxtHandle phContext);
 KSECDDDECLSPEC SECURITY_STATUS WINAPI SECUR32$FreeCredentialsHandle(PCredHandle phCredential);
 
+// ws2_32 (raw KDC transport for asreproast)
+WINBASEAPI int WINAPI WS2_32$WSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData);
+WINBASEAPI SOCKET WINAPI WS2_32$socket(int af, int type, int protocol);
+WINBASEAPI int WINAPI WS2_32$sendto(SOCKET s, const char* buf, int len, int flags, const struct sockaddr* to, int tolen);
+WINBASEAPI int WINAPI WS2_32$recvfrom(SOCKET s, char* buf, int len, int flags, struct sockaddr* from, int* fromlen);
+WINBASEAPI int WINAPI WS2_32$connect(SOCKET s, const struct sockaddr* name, int namelen);
+WINBASEAPI int WINAPI WS2_32$send(SOCKET s, const char* buf, int len, int flags);
+WINBASEAPI int WINAPI WS2_32$recv(SOCKET s, char* buf, int len, int flags);
+WINBASEAPI int WINAPI WS2_32$closesocket(SOCKET s);
+WINBASEAPI u_short WINAPI WS2_32$htons(u_short hostshort);
+WINBASEAPI unsigned long WINAPI WS2_32$inet_addr(const char* cp);
+WINBASEAPI int WINAPI WS2_32$WSAGetLastError(VOID);
+
+// netapi32 (domain controller discovery)
+WINBASEAPI DWORD WINAPI NETAPI32$DsGetDcNameA(LPCSTR ComputerName, LPCSTR DomainName, GUID* DomainGuid, LPCSTR SiteName, ULONG Flags, PDOMAIN_CONTROLLER_INFOA* DomainControllerInfo);
+WINBASEAPI NET_API_STATUS WINAPI NETAPI32$NetApiBufferFree(LPVOID Buffer);
+
 // cryptdll
 WINBASEAPI NTSTATUS WINAPI CRYPTDLL$CDLocateCSystem(LONG type, PKERB_ECRYPT* pCSystem);
 
@@ -180,6 +199,8 @@ WINBASEAPI int ASN1API MSASN1$ASN1BEREncS32(ASN1encoding_t enc, ASN1uint32_t tag
 WINBASEAPI int ASN1API MSASN1$ASN1BEREncEndOfContents(ASN1encoding_t enc, ASN1uint32_t LengthOffset);
 WINBASEAPI int ASN1API MSASN1$ASN1DEREncCharString(ASN1encoding_t enc, ASN1uint32_t tag, ASN1uint32_t len, ASN1char_t* val);
 WINBASEAPI int ASN1API MSASN1$ASN1DEREncOctetString(ASN1encoding_t enc, ASN1uint32_t tag, ASN1uint32_t len, ASN1octet_t* val);
+WINBASEAPI int ASN1API MSASN1$ASN1BEREncBitString(ASN1encoding_t enc, ASN1uint32_t tag, ASN1uint32_t unused, ASN1octet_t* val);
+WINBASEAPI int ASN1API MSASN1$ASN1BEREncGeneralizedTime(ASN1encoding_t enc, ASN1uint32_t tag, ASN1generalizedtime_t* val);
 #else
 __declspec(dllimport) NTSTATUS WINAPI CDLocateCSystem(LONG type, PKERB_ECRYPT* pCSystem);
 
@@ -243,6 +264,20 @@ __declspec(dllimport) NTSTATUS WINAPI CDLocateCSystem(LONG type, PKERB_ECRYPT* p
 
 #define CRYPTDLL$CDLocateCSystem CDLocateCSystem
 
+#define WS2_32$WSAStartup WSAStartup
+#define WS2_32$socket socket
+#define WS2_32$sendto sendto
+#define WS2_32$recvfrom recvfrom
+#define WS2_32$connect connect
+#define WS2_32$send send
+#define WS2_32$recv recv
+#define WS2_32$closesocket closesocket
+#define WS2_32$htons htons
+#define WS2_32$inet_addr inet_addr
+#define WS2_32$WSAGetLastError WSAGetLastError
+#define NETAPI32$DsGetDcNameA DsGetDcNameA
+#define NETAPI32$NetApiBufferFree NetApiBufferFree
+
 #define MSASN1$ASN1_CreateModule ASN1_CreateModule
 #define MSASN1$ASN1_CloseModule ASN1_CloseModule
 #define MSASN1$ASN1_CreateEncoder ASN1_CreateEncoder
@@ -275,4 +310,6 @@ __declspec(dllimport) NTSTATUS WINAPI CDLocateCSystem(LONG type, PKERB_ECRYPT* p
 #define MSASN1$ASN1DEREncCharString ASN1BEREncCharString
 #define MSASN1$ASN1DEREncOctetString ASN1BEREncOctetString
 #define MSASN1$ASN1BEREncEndOfContents ASN1BEREncEndOfContents
+#define MSASN1$ASN1BEREncBitString ASN1BEREncBitString
+#define MSASN1$ASN1BEREncGeneralizedTime ASN1BEREncGeneralizedTime
 #endif

