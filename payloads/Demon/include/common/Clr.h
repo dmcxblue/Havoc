@@ -703,6 +703,11 @@ typedef struct _DOTNET_ARGS
     /* Successful invoked ? */
     BOOL Invoked;
 
+    /* Set when the invoke worker thread outlived our join window. DotnetClose
+     * then leaks DOTNET_ARGS instead of freeing CLR state the thread is still
+     * using (a UAF inside the beacon is worse than a one-shot leak). */
+    BOOL ThreadLeaked;
+
     /* Step-specific error detail (wide string literal, do not free) */
     BUFFER ErrorDetail;
 
