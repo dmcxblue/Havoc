@@ -48,10 +48,24 @@ static void ASN1CALL ASN1Free_KERB_REPLY_KEY_PACKAGE2(KERB_REPLY_KEY_PACKAGE2* v
 static void ASN1CALL ASN1Free_KERB_ENCRYPTION_KEY(KERB_ENCRYPTION_KEY* val);
 static void ASN1CALL ASN1Free_KERB_CRED(KERB_CRED* val);
 static void ASN1CALL ASN1Free_KERB_CRED_tickets(PKERB_CRED_tickets* val);
+static int ASN1CALL ASN1Enc_KERB_PA_DATA(ASN1encoding_t enc, ASN1uint32_t tag, KERB_PA_DATA* val);
+static int ASN1CALL ASN1Enc_PKERB_PA_DATA_list(ASN1encoding_t enc, ASN1uint32_t tag, PKERB_PA_DATA_list* val);
+static int ASN1CALL ASN1Enc_KERB_KDC_REQ_BODY(ASN1encoding_t enc, ASN1uint32_t tag, KERB_KDC_REQ_BODY* val);
+static int ASN1CALL ASN1Enc_KERB_KDC_REQ(ASN1encoding_t enc, ASN1uint32_t tag, KERB_KDC_REQ* val);
+static int ASN1CALL ASN1Dec_KERB_PA_DATA(ASN1decoding_t dec, ASN1uint32_t tag, KERB_PA_DATA* val);
+static int ASN1CALL ASN1Dec_PKERB_PA_DATA_list(ASN1decoding_t dec, ASN1uint32_t tag, PKERB_PA_DATA_list* val);
+static int ASN1CALL ASN1Dec_KERB_KDC_REP(ASN1decoding_t dec, ASN1uint32_t tag, KERB_KDC_REP* val);
+static int ASN1CALL ASN1Dec_KERB_ERROR(ASN1decoding_t dec, ASN1uint32_t tag, KERB_ERROR* val);
+static void ASN1CALL ASN1Free_KERB_ERROR(KERB_ERROR* val);
+static void ASN1CALL ASN1Free_KERB_PA_DATA(KERB_PA_DATA* val);
+static void ASN1CALL ASN1Free_PKERB_PA_DATA_list(PKERB_PA_DATA_list* val);
+static void ASN1CALL ASN1Free_KERB_KDC_REQ_BODY(KERB_KDC_REQ_BODY* val);
+static void ASN1CALL ASN1Free_KERB_KDC_REQ(KERB_KDC_REQ* val);
+static void ASN1CALL ASN1Free_KERB_KDC_REP(KERB_KDC_REP* val);
 
 // Modern Windows has 75 PDUs
 typedef ASN1BerEncFun_t ASN1EncFun_t;
-ASN1EncFun_t encfntab[49] = {
+ASN1EncFun_t encfntab[54] = {
     NULL,  //(ASN1EncFun_t)ASN1Enc_PKERB_AUTHORIZATION_DATA_LIST,
     NULL,  //(ASN1EncFun_t)ASN1Enc_PKERB_IF_RELEVANT_AUTH_DATA,
     NULL,  //(ASN1EncFun_t)ASN1Enc_PKERB_PREAUTH_DATA_LIST,
@@ -101,10 +115,15 @@ ASN1EncFun_t encfntab[49] = {
     NULL,  //(ASN1EncFun_t)ASN1Enc_KERB_AS_REQUEST,
     NULL,  //(ASN1EncFun_t)ASN1Enc_KERB_TGS_REQUEST,
     NULL,  //(ASN1EncFun_t)ASN1Enc_KERB_PA_PK_AS_REQ2,
+    (ASN1EncFun_t)ASN1Enc_KERB_PA_DATA,          // 49
+    (ASN1EncFun_t)ASN1Enc_KERB_KDC_REQ_BODY,     // 50
+    (ASN1EncFun_t)ASN1Enc_KERB_KDC_REQ,          // 51
+    NULL,                                        // 52 KDC_REP (decode only)
+    NULL,                                        // 53 KRB_ERROR (decode only)
 };
 
 typedef ASN1BerDecFun_t ASN1DecFun_t;
-ASN1DecFun_t decfntab[49] = {
+ASN1DecFun_t decfntab[54] = {
     NULL,  //(ASN1DecFun_t)ASN1Dec_PKERB_AUTHORIZATION_DATA_LIST,
     NULL,  //(ASN1DecFun_t)ASN1Dec_PKERB_IF_RELEVANT_AUTH_DATA,
     NULL,  //(ASN1DecFun_t)ASN1Dec_PKERB_PREAUTH_DATA_LIST,
@@ -154,9 +173,14 @@ ASN1DecFun_t decfntab[49] = {
     NULL,  //(ASN1DecFun_t)ASN1Dec_KERB_AS_REQUEST,
     NULL,  //(ASN1DecFun_t)ASN1Dec_KERB_TGS_REQUEST,
     NULL,  //(ASN1DecFun_t)ASN1Dec_KERB_PA_PK_AS_REQ2,
+    (ASN1DecFun_t)ASN1Dec_KERB_PA_DATA,          // 49
+    NULL,                                        // 50 KDC_REQ_BODY (encode only)
+    NULL,                                        // 51 KDC_REQ (encode only)
+    (ASN1DecFun_t)ASN1Dec_KERB_KDC_REP,          // 52
+    (ASN1DecFun_t)ASN1Dec_KERB_ERROR,            // 53
 };
 
-ASN1FreeFun_t freefntab[49] = {
+ASN1FreeFun_t freefntab[54] = {
     NULL,  //(ASN1FreeFun_t)ASN1Free_PKERB_AUTHORIZATION_DATA_LIST,
     NULL,  //(ASN1FreeFun_t)ASN1Free_PKERB_IF_RELEVANT_AUTH_DATA,
     NULL,  //(ASN1FreeFun_t)ASN1Free_PKERB_PREAUTH_DATA_LIST,
@@ -206,9 +230,14 @@ ASN1FreeFun_t freefntab[49] = {
     NULL,  //(ASN1FreeFun_t)ASN1Free_KERB_AS_REQUEST,
     NULL,  //(ASN1FreeFun_t)ASN1Free_KERB_TGS_REQUEST,
     NULL,  //(ASN1FreeFun_t)ASN1Free_KERB_PA_PK_AS_REQ2,
+    (ASN1FreeFun_t)ASN1Free_KERB_PA_DATA,        // 49
+    (ASN1FreeFun_t)ASN1Free_KERB_KDC_REQ_BODY,   // 50
+    (ASN1FreeFun_t)ASN1Free_KERB_KDC_REQ,        // 51
+    (ASN1FreeFun_t)ASN1Free_KERB_KDC_REP,        // 52
+    (ASN1FreeFun_t)ASN1Free_KERB_ERROR,          // 53
 };
 
-ULONG sizetab[49] = {
+ULONG sizetab[54] = {
     0,  // SIZE_KRB5_Module_PDU_0,
     0,  // SIZE_KRB5_Module_PDU_1,
     0,  // SIZE_KRB5_Module_PDU_2,
@@ -258,10 +287,15 @@ ULONG sizetab[49] = {
     0,  // SIZE_KRB5_Module_PDU_46,
     0,  // SIZE_KRB5_Module_PDU_47,
     0,  // SIZE_KRB5_Module_PDU_48,
+    SIZE_KRB5_Module_PDU_49,
+    SIZE_KRB5_Module_PDU_50,
+    SIZE_KRB5_Module_PDU_51,
+    SIZE_KRB5_Module_PDU_52,
+    SIZE_KRB5_Module_PDU_53,
 };
 
 ASN1module_t ASN1CALL KRB5_Module_Startup(void) {
-    return MSASN1$ASN1_CreateModule(0x10000, ASN1_BER_RULE_DER, ASN1FLAGS_NOASSERT, 49,
+    return MSASN1$ASN1_CreateModule(0x10000, ASN1_BER_RULE_DER, ASN1FLAGS_NOASSERT, 54,
                                     (const ASN1GenericFun_t*)encfntab, (const ASN1GenericFun_t*)decfntab, freefntab,
                                     sizetab, 0x3562726b);
 }
@@ -972,5 +1006,376 @@ static void ASN1CALL ASN1Free_KERB_CRED_tickets(PKERB_CRED_tickets* val) {
             ff = f->next;
             MSASN1$ASN1Free(f);
         }
+    }
+}
+/* ============================================================================
+ * AS-REQ / AS-REP support (RFC 4120 KDC-REQ / KDC-REP).
+ * Added for ASREPRoast. Tags follow the Microsoft explicit-tag convention used
+ * throughout this module (e.g. [0] = constructed context 0x80000000 wrapping
+ * the inner TLV), matching what the KDC emits/expects on the wire.
+ * ========================================================================== */
+
+static int ASN1CALL ASN1Enc_KERB_PA_DATA(ASN1encoding_t enc, ASN1uint32_t tag, KERB_PA_DATA* val) {
+    ASN1uint32_t nLenOff, nLenOff0;
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, tag ? tag : 0x10, &nLenOff)) return 0;
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000001, &nLenOff0)) return 0;
+    if (!MSASN1$ASN1BEREncS32(enc, 0x2, (val)->type)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000002, &nLenOff0)) return 0;
+    if (!MSASN1$ASN1DEREncOctetString(enc, 0x4, (val)->value.length, (val)->value.value)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff)) return 0;
+    return 1;
+}
+
+static int ASN1CALL ASN1Enc_PKERB_PA_DATA_list(ASN1encoding_t enc, ASN1uint32_t tag, PKERB_PA_DATA_list* val) {
+    PKERB_PA_DATA_list f;
+    ASN1uint32_t nLenOff;
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, tag ? tag : 0x10, &nLenOff)) return 0;
+    for (f = *val; f; f = f->next) {
+        if (!ASN1Enc_KERB_PA_DATA(enc, 0, &f->value)) return 0;
+    }
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff)) return 0;
+    return 1;
+}
+
+static int ASN1CALL ASN1Enc_KERB_KDC_REQ_BODY(ASN1encoding_t enc, ASN1uint32_t tag, KERB_KDC_REQ_BODY* val) {
+    ASN1uint32_t nLenOff, nLenOff0, nLenOff1;
+    PKERB_INT32_list f;
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, tag ? tag : 0x10, &nLenOff)) return 0;
+
+    /* [0] kdc-options: KDCOptions BIT STRING.
+       Rubeus/impacket use FORWARDABLE|RENEWABLE|RENEWABLEOK = 0x40800010.
+       (0x40810000 would set CANONICALIZE instead of RENEWABLEOK, which the
+       KDC rejects for a bare sAMAccountName.) Encode as a DER BIT STRING via
+       octet-string-with-tag-0x03: unused-bits byte + 4 data bytes. */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000000, &nLenOff0)) return 0;
+    {
+        ASN1octet_t opts[5] = { 0x00, 0x40, 0x80, 0x00, 0x10 };
+        if (!MSASN1$ASN1DEREncOctetString(enc, 0x3, 5, opts)) return 0;
+    }
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+
+    /* [1] cname (optional) */
+    if ((val)->o[0] & 0x01) {
+        if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000001, &nLenOff0)) return 0;
+        if (!ASN1Enc_KERB_PRINCIPAL_NAME(enc, 0, &(val)->cname)) return 0;
+        if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+    }
+
+    /* [2] realm */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000002, &nLenOff0)) return 0;
+    if (!MSASN1$ASN1DEREncCharString(enc, 0x1b, KERNEL32$lstrlenA((val)->realm), (val)->realm)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+
+    /* [3] sname (optional) */
+    if ((val)->o[0] & 0x02) {
+        if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000003, &nLenOff0)) return 0;
+        if (!ASN1Enc_KERB_PRINCIPAL_NAME(enc, 0, &(val)->sname)) return 0;
+        if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+    }
+
+    /* [5] till (required) */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000005, &nLenOff0)) return 0;
+    if (!MSASN1$ASN1BEREncGeneralizedTime(enc, 0x18, &(val)->till)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+
+    /* [7] nonce (required) */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000007, &nLenOff0)) return 0;
+    if (!MSASN1$ASN1BEREncS32(enc, 0x2, (val)->nonce)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+
+    /* [8] etype (required, SEQUENCE OF Int32) */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000008, &nLenOff0)) return 0;
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x10, &nLenOff1)) return 0;
+    for (f = (val)->etype; f; f = f->next) {
+        if (!MSASN1$ASN1BEREncS32(enc, 0x2, f->value)) return 0;
+    }
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff1)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff)) return 0;
+    return 1;
+}
+
+static int ASN1CALL ASN1Enc_KERB_KDC_REQ(ASN1encoding_t enc, ASN1uint32_t tag, KERB_KDC_REQ* val) {
+    ASN1uint32_t nExplTagLenOff0, nLenOff, nLenOff0;
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, tag ? tag : 0x4000000a, &nExplTagLenOff0)) return 0; /* [APPLICATION 10] */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x10, &nLenOff)) return 0;
+
+    /* [1] pvno */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000001, &nLenOff0)) return 0;
+    if (!MSASN1$ASN1BEREncS32(enc, 0x2, (val)->pvno)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+
+    /* [2] msg-type */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000002, &nLenOff0)) return 0;
+    if (!MSASN1$ASN1BEREncS32(enc, 0x2, (val)->msg_type)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+
+    /* [3] padata (optional) */
+    if ((val)->padata) {
+        if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000003, &nLenOff0)) return 0;
+        if (!ASN1Enc_PKERB_PA_DATA_list(enc, 0, &(val)->padata)) return 0;
+        if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+    }
+
+    /* [4] req-body */
+    if (!MSASN1$ASN1BEREncExplicitTag(enc, 0x80000004, &nLenOff0)) return 0;
+    if (!ASN1Enc_KERB_KDC_REQ_BODY(enc, 0, &(val)->req_body)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff0)) return 0;
+
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nLenOff)) return 0;
+    if (!MSASN1$ASN1BEREncEndOfContents(enc, nExplTagLenOff0)) return 0;
+    return 1;
+}
+
+static int ASN1CALL ASN1Dec_KERB_PA_DATA(ASN1decoding_t dec, ASN1uint32_t tag, KERB_PA_DATA* val) {
+    ASN1decoding_t dd, dd0;
+    ASN1octet_t* di, * di0;
+    if (!MSASN1$ASN1BERDecExplicitTag(dec, tag ? tag : 0x10, &dd, &di)) return 0;
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000001, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecS32Val(dd0, 0x2, &(val)->type)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000002, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecOctetString(dd0, 0x4, &(val)->value)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dec, dd, di)) return 0;
+    return 1;
+}
+
+static int ASN1CALL ASN1Dec_PKERB_PA_DATA_list(ASN1decoding_t dec, ASN1uint32_t tag, PKERB_PA_DATA_list* val) {
+    PKERB_PA_DATA_list* f;
+    ASN1decoding_t dd;
+    ASN1octet_t* di;
+    ASN1uint32_t t;
+    if (!MSASN1$ASN1BERDecExplicitTag(dec, tag ? tag : 0x10, &dd, &di)) return 0;
+    f = val;
+    while (MSASN1$ASN1BERDecNotEndOfContents(dd, di)) {
+        if (!MSASN1$ASN1BERDecPeekTag(dd, &t)) return 0;
+        if (!(*f = (PKERB_PA_DATA_list)MSASN1$ASN1DecAlloc(dd, sizeof(**f)))) return 0;
+        if (!ASN1Dec_KERB_PA_DATA(dd, 0, &(*f)->value)) return 0;
+        f = &(*f)->next;
+    }
+    *f = NULL;
+    if (!MSASN1$ASN1BERDecEndOfContents(dec, dd, di)) return 0;
+    return 1;
+}
+
+static int ASN1CALL ASN1Dec_KERB_KDC_REP(ASN1decoding_t dec, ASN1uint32_t tag, KERB_KDC_REP* val) {
+    ASN1decoding_t dd, pExplTagDec0, dd0;
+    ASN1octet_t* di, * pbExplTagDataEnd0, * di0;
+    ASN1uint32_t t;
+    val->padata = NULL;
+    if (!MSASN1$ASN1BERDecExplicitTag(dec, tag ? tag : 0x4000000b, &pExplTagDec0, &pbExplTagDataEnd0)) return 0; /* [APPLICATION 11] */
+    if (!MSASN1$ASN1BERDecExplicitTag(pExplTagDec0, 0x10, &dd, &di)) return 0;
+
+    /* [0] pvno */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000000, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecS32Val(dd0, 0x2, &(val)->pvno)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [1] msg-type */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000001, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecS32Val(dd0, 0x2, &(val)->msg_type)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [2] padata (optional) */
+    MSASN1$ASN1BERDecPeekTag(dd, &t);
+    if (t == 0x80000002) {
+        if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000002, &dd0, &di0)) return 0;
+        if (!ASN1Dec_PKERB_PA_DATA_list(dd0, 0, &(val)->padata)) return 0;
+        if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    }
+
+    /* [3] crealm */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000003, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecZeroCharString(dd0, 0x1b, &(val)->crealm)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [4] cname */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000004, &dd0, &di0)) return 0;
+    if (!ASN1Dec_KERB_PRINCIPAL_NAME(dd0, 0, &(val)->cname)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [5] ticket */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000005, &dd0, &di0)) return 0;
+    if (!ASN1Dec_KERB_TICKET(dd0, 0, &(val)->ticket)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [6] enc-part */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000006, &dd0, &di0)) return 0;
+    if (!ASN1Dec_KERB_ENCRYPTED_DATA(dd0, 0, &(val)->enc_part)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    if (!MSASN1$ASN1BERDecEndOfContents(pExplTagDec0, dd, di)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dec, pExplTagDec0, pbExplTagDataEnd0)) return 0;
+    return 1;
+}
+
+static void ASN1CALL ASN1Free_KERB_PA_DATA(KERB_PA_DATA* val) {
+    if (val) {
+        MSASN1$ASN1octetstring_free(&(val)->value);
+    }
+}
+
+static void ASN1CALL ASN1Free_PKERB_PA_DATA_list(PKERB_PA_DATA_list* val) {
+    PKERB_PA_DATA_list f, ff;
+    if (val) {
+        for (f = *val; f; f = ff) {
+            ASN1Free_KERB_PA_DATA(&f->value);
+            ff = f->next;
+            MSASN1$ASN1Free(f);
+        }
+    }
+}
+
+static void ASN1CALL ASN1Free_KERB_KDC_REQ_BODY(KERB_KDC_REQ_BODY* val) {
+    PKERB_INT32_list f, ff;
+    if (val) {
+        if ((val)->o[0] & 0x01) ASN1Free_KERB_PRINCIPAL_NAME(&(val)->cname);
+        MSASN1$ASN1ztcharstring_free((val)->realm);
+        if ((val)->o[0] & 0x02) ASN1Free_KERB_PRINCIPAL_NAME(&(val)->sname);
+        for (f = (val)->etype; f; f = ff) { ff = f->next; MSASN1$ASN1Free(f); }
+    }
+}
+
+static void ASN1CALL ASN1Free_KERB_KDC_REQ(KERB_KDC_REQ* val) {
+    if (val) {
+        if (val->padata) ASN1Free_PKERB_PA_DATA_list(&(val)->padata);
+        ASN1Free_KERB_KDC_REQ_BODY(&(val)->req_body);
+    }
+}
+
+static void ASN1CALL ASN1Free_KERB_KDC_REP(KERB_KDC_REP* val) {
+    if (val) {
+        if (val->padata) ASN1Free_PKERB_PA_DATA_list(&(val)->padata);
+        MSASN1$ASN1ztcharstring_free((val)->crealm);
+        ASN1Free_KERB_PRINCIPAL_NAME(&(val)->cname);
+        ASN1Free_KERB_TICKET(&(val)->ticket);
+        ASN1Free_KERB_ENCRYPTED_DATA(&(val)->enc_part);
+    }
+}
+
+/* ============================================================================
+ * KRB-ERROR decode — surfaces the KDC's real error (PREAUTH_REQUIRED,
+ * ETYPE_NOSUPP, etc.) when an AS-REQ is rejected, instead of a generic 0x3c.
+ * ========================================================================== */
+
+static int ASN1CALL ASN1Dec_KERB_ERROR(ASN1decoding_t dec, ASN1uint32_t tag, KERB_ERROR* val) {
+    ASN1decoding_t dd, pExplTagDec0, dd0;
+    ASN1octet_t* di, * pbExplTagDataEnd0, * di0;
+    ASN1uint32_t t;
+    ASN1generalizedtime_t tmptime;
+    ASN1int32_t tmpint;
+    ASN1octetstring_t tmpoct;
+    KERB_PRINCIPAL_NAME tmppn;
+    char* tmpstr = NULL;
+
+    MSVCRT$memset(&tmppn, 0, sizeof(tmppn));
+    val->o[0] = 0;
+    val->realm = NULL;
+    val->e_text = NULL;
+
+    if (!MSASN1$ASN1BERDecExplicitTag(dec, tag ? tag : 0x4000001e, &pExplTagDec0, &pbExplTagDataEnd0)) return 0; /* [APPLICATION 30] */
+    if (!MSASN1$ASN1BERDecExplicitTag(pExplTagDec0, 0x10, &dd, &di)) return 0;
+
+    /* [0] pvno */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000000, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecS32Val(dd0, 0x2, &(val)->pvno)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [1] msg-type */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000001, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecS32Val(dd0, 0x2, &(val)->msg_type)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [2] ctime (optional) */
+    MSASN1$ASN1BERDecPeekTag(dd, &t);
+    if (t == 0x80000002) {
+        if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000002, &dd0, &di0)) return 0;
+        if (!MSASN1$ASN1BERDecGeneralizedTime(dd0, 0x18, &tmptime)) return 0;
+        if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    }
+
+    /* [3] cusec (optional) */
+    MSASN1$ASN1BERDecPeekTag(dd, &t);
+    if (t == 0x80000003) {
+        if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000003, &dd0, &di0)) return 0;
+        if (!MSASN1$ASN1BERDecS32Val(dd0, 0x2, &tmpint)) return 0;
+        if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    }
+
+    /* [4] stime */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000004, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecGeneralizedTime(dd0, 0x18, &tmptime)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [5] susec */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000005, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecS32Val(dd0, 0x2, &tmpint)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [6] error-code */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000006, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecS32Val(dd0, 0x2, &(val)->error_code)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [7] crealm (optional) */
+    MSASN1$ASN1BERDecPeekTag(dd, &t);
+    if (t == 0x80000007) {
+        if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000007, &dd0, &di0)) return 0;
+        if (!MSASN1$ASN1BERDecZeroCharString(dd0, 0x1b, &tmpstr)) return 0;
+        if (tmpstr) { MSASN1$ASN1ztcharstring_free(tmpstr); tmpstr = NULL; }
+        if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    }
+
+    /* [8] cname (optional) */
+    MSASN1$ASN1BERDecPeekTag(dd, &t);
+    if (t == 0x80000008) {
+        if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000008, &dd0, &di0)) return 0;
+        if (!ASN1Dec_KERB_PRINCIPAL_NAME(dd0, 0, &tmppn)) return 0;
+        ASN1Free_KERB_PRINCIPAL_NAME(&tmppn);
+        if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    }
+
+    /* [9] realm */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x80000009, &dd0, &di0)) return 0;
+    if (!MSASN1$ASN1BERDecZeroCharString(dd0, 0x1b, &(val)->realm)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [10] sname */
+    if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x8000000a, &dd0, &di0)) return 0;
+    if (!ASN1Dec_KERB_PRINCIPAL_NAME(dd0, 0, &(val)->sname)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+
+    /* [11] e-text (optional) */
+    MSASN1$ASN1BERDecPeekTag(dd, &t);
+    if (t == 0x8000000b) {
+        if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x8000000b, &dd0, &di0)) return 0;
+        if (!MSASN1$ASN1BERDecZeroCharString(dd0, 0x1b, &(val)->e_text)) return 0;
+        val->o[0] |= 0x01;
+        if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    }
+
+    /* [12] e-data (optional) */
+    MSASN1$ASN1BERDecPeekTag(dd, &t);
+    if (t == 0x8000000c) {
+        if (!MSASN1$ASN1BERDecExplicitTag(dd, 0x8000000c, &dd0, &di0)) return 0;
+        if (!MSASN1$ASN1BERDecOctetString(dd0, 0x4, &tmpoct)) return 0;
+        MSASN1$ASN1octetstring_free(&tmpoct);
+        if (!MSASN1$ASN1BERDecEndOfContents(dd, dd0, di0)) return 0;
+    }
+
+    if (!MSASN1$ASN1BERDecEndOfContents(pExplTagDec0, dd, di)) return 0;
+    if (!MSASN1$ASN1BERDecEndOfContents(dec, pExplTagDec0, pbExplTagDataEnd0)) return 0;
+    return 1;
+}
+
+static void ASN1CALL ASN1Free_KERB_ERROR(KERB_ERROR* val) {
+    if (val) {
+        if (val->realm) MSASN1$ASN1ztcharstring_free(val->realm);
+        ASN1Free_KERB_PRINCIPAL_NAME(&(val)->sname);
+        if (val->o[0] & 0x01) MSASN1$ASN1ztcharstring_free(val->e_text);
     }
 }

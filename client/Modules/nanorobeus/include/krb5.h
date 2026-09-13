@@ -23,6 +23,13 @@
 #define KERB_AUTHENTICATOR_PDU 30
 #define KERB_AP_REQUEST_PDU 31
 #define KERB_CRED_PDU 36
+/* AS-REQ / AS-REP (RFC 4120 KDC-REQ / KDC-REP). New PDUs appended after the
+   existing 49 so the table indices stay self-contained. */
+#define KERB_PA_DATA_PDU      49
+#define KERB_KDC_REQ_BODY_PDU 50
+#define KERB_KDC_REQ_PDU      51
+#define KERB_KDC_REP_PDU      52
+#define KERB_ERROR_PDU        53
 
 #define SIZE_KRB5_Module_PDU_6 sizeof(KERB_ENCRYPTED_DATA)
 #define SIZE_KRB5_Module_PDU_7 sizeof(KERB_ENCRYPTION_KEY)
@@ -32,6 +39,11 @@
 #define SIZE_KRB5_Module_PDU_30 sizeof(KERB_AUTHENTICATOR)
 #define SIZE_KRB5_Module_PDU_31 sizeof(KERB_AP_REQUEST)
 #define SIZE_KRB5_Module_PDU_36 sizeof(KERB_CRED)
+#define SIZE_KRB5_Module_PDU_49 sizeof(KERB_PA_DATA)
+#define SIZE_KRB5_Module_PDU_50 sizeof(KERB_KDC_REQ_BODY)
+#define SIZE_KRB5_Module_PDU_51 sizeof(KERB_KDC_REQ)
+#define SIZE_KRB5_Module_PDU_52 sizeof(KERB_KDC_REP)
+#define SIZE_KRB5_Module_PDU_53 sizeof(KERB_ERROR)
 
 typedef LONG KERBERR, *PKERBERR;
 #define KDC_ERR_NONE ((KERBERR)0x0)
@@ -163,6 +175,91 @@ typedef struct KERB_CRED {
     PKERB_CRED_tickets tickets;
     KERB_ENCRYPTED_DATA encrypted_part;
 } KERB_CRED;
+
+/* ---- AS-REQ / AS-REP (RFC 4120) ---- */
+
+/* SEQUENCE OF Int32 (etype list in KDC-REQ-BODY) */
+typedef struct PKERB_INT32_list_s* PPKERB_INT32_list;
+typedef struct PKERB_INT32_list_s {
+    PPKERB_INT32_list next;
+    ASN1int32_t value;
+} PKERB_INT32_list_Element, *PKERB_INT32_list;
+
+/* PA-DATA ::= SEQUENCE { padata-type [1] Int32, padata-value [2] OCTET STRING } */
+typedef struct KERB_PA_DATA {
+    ASN1int32_t type;
+    ASN1octetstring_t value;
+} KERB_PA_DATA;
+
+/* SEQUENCE OF PA-DATA */
+typedef struct PKERB_PA_DATA_list_s* PPKERB_PA_DATA_list;
+typedef struct PKERB_PA_DATA_list_s {
+    PPKERB_PA_DATA_list next;
+    KERB_PA_DATA value;
+} PKERB_PA_DATA_list_Element, *PKERB_PA_DATA_list;
+
+/* KDC-REQ-BODY. Optional fields use the o[0] bit mask (same pattern as
+   KERB_TICKET); bits set in kdc_req_body_present_* define which are encoded. */
+#define kdc_req_body_cname_present      0x01
+#define kdc_req_body_sname_present      0x02
+#define kdc_req_body_from_present       0x04
+#define kdc_req_body_rtime_present      0x08
+#define kdc_req_body_addresses_present  0x10
+#define kdc_req_body_encauthdata_present 0x20
+#define kdc_req_body_addtickets_present 0x40
+
+typedef struct KERB_KDC_REQ_BODY {
+    union {
+        ASN1uint16_t bit_mask;
+        ASN1octet_t o[1];
+    };
+    ASN1bitstring_t kdc_options;
+    KERB_PRINCIPAL_NAME cname;      /* [1] optional */
+    KERB_REALM realm;
+    KERB_PRINCIPAL_NAME sname;      /* [3] optional */
+    KERB_TIME from;                 /* [4] optional */
+    KERB_TIME till;                 /* [5] */
+    KERB_TIME rtime;                /* [6] optional */
+    ASN1int32_t nonce;              /* [7] */
+    PKERB_INT32_list etype;         /* [8] SEQUENCE OF Int32 */
+} KERB_KDC_REQ_BODY;
+
+/* KDC-REQ ::= SEQUENCE { pvno [1], msg-type [2], padata [3] OPT, req-body [4] } */
+typedef struct KERB_KDC_REQ {
+    ASN1int32_t pvno;               /* 5 */
+    ASN1int32_t msg_type;           /* 10 = AS-REQ, 12 = TGS-REQ */
+    PKERB_PA_DATA_list padata;      /* [3] optional */
+    KERB_KDC_REQ_BODY req_body;     /* [4] */
+} KERB_KDC_REQ, *PKERB_KDC_REQ;
+
+/* KDC-REP ::= SEQUENCE { pvno [0], msg-type [1], padata [2] OPT,
+   crealm [3], cname [4], ticket [5], enc-part [6] } */
+typedef struct KERB_KDC_REP {
+    ASN1int32_t pvno;               /* 5 */
+    ASN1int32_t msg_type;           /* 11 = AS-REP, 13 = TGS-REP */
+    PKERB_PA_DATA_list padata;      /* [2] optional */
+    KERB_REALM crealm;              /* [3] */
+    KERB_PRINCIPAL_NAME cname;      /* [4] */
+    KERB_TICKET ticket;             /* [5] */
+    KERB_ENCRYPTED_DATA enc_part;   /* [6] */
+} KERB_KDC_REP, *PKERB_KDC_REP;
+
+/* KRB-ERROR ::= [APPLICATION 30] (RFC 4120). Only the fields needed for
+   ASREPRoast error reporting are retained; optionals are decoded-and-skipped. */
+#define kerb_error_etext_present 0x01
+
+typedef struct KERB_ERROR {
+    union {
+        ASN1uint16_t bit_mask;
+        ASN1octet_t o[1];
+    };
+    ASN1int32_t pvno;
+    ASN1int32_t msg_type;
+    ASN1int32_t error_code;
+    KERB_REALM realm;               /* [9] */
+    KERB_PRINCIPAL_NAME sname;      /* [10] */
+    KERB_REALM e_text;              /* [11] optional */
+} KERB_ERROR, *PKERB_ERROR;
 
 ASN1module_t ASN1CALL KRB5_Module_Startup(void);
 void ASN1CALL KRB5_Module_Cleanup(ASN1module_t module);
