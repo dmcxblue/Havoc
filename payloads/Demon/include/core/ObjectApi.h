@@ -102,4 +102,8 @@ SIZE_T BeaconDataStoreMaxEntries();
 /* Beacon User Data functions */
 PCHAR BeaconGetCustomUserData();
 
+/* Async Functions */
+VOID    BeaconWakeup();
+HANDLE  BeaconGetStopJobEvent();
+
 #endif

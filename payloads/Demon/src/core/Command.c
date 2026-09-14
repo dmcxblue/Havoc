@@ -1167,7 +1167,7 @@ VOID CommandInlineExecute( PPARSER Parser )
         case 0:
         {
             PUTS( "Use Non-Threaded CoffeeLdr" )
-            CoffeeLdr( FunctionName, ObjectData, ArgBuffer, ArgSize, RequestID );
+            CoffeeLdr( FunctionName, ObjectData, ArgBuffer, ArgSize, RequestID, NULL );
             break;
         }
 
@@ -1190,7 +1190,7 @@ VOID CommandInlineExecute( PPARSER Parser )
             else
             {
                 PUTS( "Config is set to non-threaded" )
-                CoffeeLdr( FunctionName, ObjectData, ArgBuffer, ArgSize, RequestID );
+                CoffeeLdr( FunctionName, ObjectData, ArgBuffer, ArgSize, RequestID, NULL );
             }
 
             break;
