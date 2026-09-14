@@ -7,8 +7,8 @@ fires automatically whenever the chosen trigger occurs. Survives reboots.
 
 Registered as a MODULE with per-subcommand commands (list / create /
 remove / clean). The full annotated guide (with a worked example for every
-parameter and trigger) lives in MODULE_DESCRIPTION so it renders on the
-native `help wmisubs` command.
+parameter and trigger) is passed as the module's Behavior field so it renders
+on the native `help wmisubs` command without flooding the bare `help` listing.
 
 Triggers (resolved to WQL here, so the BOF just gets the final query):
     startup          : fires a few minutes after boot (via perf-counter mutation)
@@ -322,8 +322,8 @@ def _cmd_remove(demonID, *params):
 
 RegisterModule(
     "wmisubs",
+    "WMI Event Subscription persistence (T1546.003) - installs a permanent subscription to run a command as SYSTEM on a trigger",
     MODULE_DESCRIPTION,
-    "",
     MODULE_USAGE,
     MODULE_EXAMPLE,
     "",
