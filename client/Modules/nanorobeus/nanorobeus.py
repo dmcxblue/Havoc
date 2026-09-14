@@ -413,7 +413,7 @@ KERBEROAST_HELP = (
     "  AES256 (etype 18)      -> mode 19700"
 )
 
-RegisterCommand( kerberoast, "", "kerberoast", KERBEROAST_HELP, 0, "[<username> | <service>/<host>[:port] [username]]", "jnovoa" )
+RegisterCommand( kerberoast, "", "kerberoast", "Request TGS service tickets and emit them as crackable hashes", 0, KERBEROAST_HELP, "jnovoa" )
 
 ASREPROAST_HELP = (
     "ASREPRoasting: request an AS-REP without preauthentication from the KDC\n"
@@ -440,4 +440,4 @@ ASREPROAST_HELP = (
     "  AES256 (etype 18)      -> mode 32200"
 )
 
-RegisterCommand( asreproast, "", "asreproast", ASREPROAST_HELP, 0, "[<username>] [--etype 17|18|23]", "jnovoa --etype 18" )
+RegisterCommand( asreproast, "", "asreproast", "Extract AS-REP hashes from accounts with preauthentication disabled", 0, ASREPROAST_HELP, "jnovoa --etype 18" )
