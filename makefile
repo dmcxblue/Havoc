@@ -148,6 +148,18 @@ bof-build:
 			-I client/Modules/Gpresult/include -Os -w -mno-stack-arg-probe && \
 		echo "  -> Gpresult OK"; \
 	fi
+	@ mkdir -p client/Modules/Timestomp/bin
+	@ if [ -f client/Modules/Timestomp/src/entry.c ]; then \
+		$(MINGW_CC) -o client/Modules/Timestomp/bin/timestomp.x64.o \
+			-c client/Modules/Timestomp/src/entry.c \
+			-I client/Modules/RemoteOps/CS-Remote-OPs-BOF/src/common \
+			-DBOF -Os -fno-builtin && \
+		$(MINGW_CC_x86) -o client/Modules/Timestomp/bin/timestomp.x86.o \
+			-c client/Modules/Timestomp/src/entry.c \
+			-I client/Modules/RemoteOps/CS-Remote-OPs-BOF/src/common \
+			-DBOF -Os -fno-builtin && \
+		echo "  -> Timestomp OK"; \
+	fi
 	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
 		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
 		echo "  -> UacBonanza (7 UAC bypass BOFs) OK"; \

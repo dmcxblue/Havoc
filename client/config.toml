@@ -32,5 +32,5 @@ files = [
   "client/Modules/UacCheck/uaccheck.py",
   "client/Modules/Bitsadmin/bitsadmin.py",
   "client/Modules/WmiSubscriptions/wmisubscriptions.py",
-  "client/Modules/Gpresult/gpresult.py"
-]
+  "client/Modules/Gpresult/gpresult.py",
+  "client/Modules/Timestomp/timestomp.py"]
