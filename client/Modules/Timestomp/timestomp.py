@@ -110,6 +110,7 @@ TIMESTOMP_HELP = (
     "  timestomp C:\\Windows\\Temp\\beacon.exe --time \"2023-06-15 09:30:00\"\n"
 )
 
-RegisterCommand(timestomp_cmd, "", "timestomp", TIMESTOMP_HELP, 0,
-                "<original> <file-to-modify>",
+RegisterCommand(timestomp_cmd, "", "timestomp",
+                "Rewrite a file's MAC timestamps (and MFT ChangeTime) to evade timeline analysis", 0,
+                TIMESTOMP_HELP,
                 "C:\\Windows\\System32\\cmd.exe C:\\Windows\\Temp\\beacon.exe")

@@ -158,8 +158,9 @@ TGT_RENEW_HELP = (
     "  tgt-renew --luid 0x3e4 --interval 300 --threshold 30\n"
 )
 
-RegisterCommand(tgt_monitor, "", "tgt-monitor", TGT_MONITOR_HELP, 0,
-                "[--interval <n>] [--user <list>]", "--interval 5 --user DC01$")
-RegisterCommand(tgt_renew, "", "tgt-renew", TGT_RENEW_HELP, 0,
-                "[--interval <n>] [--threshold <n>] [--user <list> | --luid <list>]",
-                "--interval 300 --threshold 30")
+RegisterCommand(tgt_monitor, "", "tgt-monitor",
+                "Monitor the LSA ticket cache and extract new TGTs as kirbi blobs", 0,
+                TGT_MONITOR_HELP, "--interval 5 --user DC01$")
+RegisterCommand(tgt_renew, "", "tgt-renew",
+                "Auto-renew TGTs nearing expiry and re-import them into the logon session", 0,
+                TGT_RENEW_HELP, "--interval 300 --threshold 30")
