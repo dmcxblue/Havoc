@@ -56,7 +56,7 @@ VOID go(char* args, int argc) {
     char* targetUsers = BeaconDataExtract(&parser, NULL);
 
     if (!IsSystem()) {
-        HANDLE hToken = StealSystemToken();
+        HANDLE hToken = EscalateToSystem();
         if (!hToken) {
             BeaconPrintf(CALLBACK_OUTPUT, "[-] Must be run as NT AUTHORITY\\SYSTEM.\n");
             return;
