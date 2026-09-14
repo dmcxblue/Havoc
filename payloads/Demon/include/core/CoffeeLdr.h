@@ -25,6 +25,7 @@ typedef struct _COFFEE_PARAMS
     PVOID  ArgData;
     SIZE_T ArgSize;
     UINT32 RequestID;
+    HANDLE StopEvent;
 } COFFEE_PARAMS, *PCOFFEE_PARAMS;
 
 typedef struct _COFF_FILE_HEADER
@@ -100,6 +101,8 @@ typedef struct _COFFEE
     PCHAR             FunMap;
     SIZE_T            FunMapSize;
 
+    HANDLE            StopEvent;
+
     struct _COFFEE*   Next;
 } COFFEE, *PCOFFEE;
 
@@ -123,7 +126,7 @@ typedef struct _COFFEE_KEY_VALUE
  * @param RequestID
  * @return
  */
-VOID CoffeeLdr( PCHAR EntryName, PVOID CoffeeData, PVOID ArgData, SIZE_T ArgSize, UINT32 RequestID );
+VOID CoffeeLdr( PCHAR EntryName, PVOID CoffeeData, PVOID ArgData, SIZE_T ArgSize, UINT32 RequestID, HANDLE StopEvent );
 
 /*!
  * CoffeeRunner

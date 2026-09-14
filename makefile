@@ -160,6 +160,22 @@ bof-build:
 			-DBOF -Os -fno-builtin && \
 		echo "  -> Timestomp OK"; \
 	fi
+	@ mkdir -p client/Modules/TgtMonitor/bin
+	@ if [ -f client/Modules/TgtMonitor/src/monitor.c ]; then \
+		$(MINGW_CC)     -o client/Modules/TgtMonitor/bin/tgt-monitor.x64.o \
+			-c client/Modules/TgtMonitor/src/monitor.c \
+			-I client/Modules/TgtMonitor/include -Wall -Werror -Os -D_NO_NTDLL_CRT_ && \
+		$(MINGW_CC_x86) -o client/Modules/TgtMonitor/bin/tgt-monitor.x86.o \
+			-c client/Modules/TgtMonitor/src/monitor.c \
+			-I client/Modules/TgtMonitor/include -Wall -Werror -Os -D_NO_NTDLL_CRT_ && \
+		$(MINGW_CC)     -o client/Modules/TgtMonitor/bin/tgt-renew.x64.o \
+			-c client/Modules/TgtMonitor/src/renew.c \
+			-I client/Modules/TgtMonitor/include -Wall -Werror -Os -D_NO_NTDLL_CRT_ && \
+		$(MINGW_CC_x86) -o client/Modules/TgtMonitor/bin/tgt-renew.x86.o \
+			-c client/Modules/TgtMonitor/src/renew.c \
+			-I client/Modules/TgtMonitor/include -Wall -Werror -Os -D_NO_NTDLL_CRT_ && \
+		echo "  -> TgtMonitor OK"; \
+	fi
 	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
 		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
 		echo "  -> UacBonanza (7 UAC bypass BOFs) OK"; \

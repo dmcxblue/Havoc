@@ -295,6 +295,12 @@ BOOL JobKill( DWORD JobID )
                         PUTS( "Kill Thread" )
                         NTSTATUS NtStatus = STATUS_SUCCESS;
 
+                        /* Signal the async-BOF stop event so a long-running
+                         * BOF (TGT monitor/renew) can exit gracefully before
+                         * the thread is terminated. */
+                        if ( JobList->Data )
+                            Instance->Win32.NtSetEvent( JobList->Data, NULL );
+
                         if ( JobList->Handle )
                         {
                             PUTS( "Kill using handle" )
