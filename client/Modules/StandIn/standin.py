@@ -78,8 +78,8 @@ def standin_cmd(demonID, *param):
             "  [--domain <d> --user <u> --pass <p>]")
         return False
 
-    # For --object, the LDAP filter rides in the 'computer' slot.
-    if mode == 5:
+    # For --object (and --object --access), the LDAP filter rides in the 'computer' slot.
+    if mode in (5, 6):
         target = obj
     else:
         target = computer
