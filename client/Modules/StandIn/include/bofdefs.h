@@ -48,6 +48,7 @@ WINBASEAPI ULONG        LDAPAPI WLDAP32$ldap_set_option(LDAP*, int, const void*)
 WINBASEAPI ULONG        LDAPAPI WLDAP32$ldap_bind_s(LDAP*, const char*, const char*, ULONG);
 WINBASEAPI ULONG        LDAPAPI WLDAP32$ldap_search_s(LDAP*, const char*, ULONG, const char*, char* [], ULONG, LDAPMessage**);
 WINBASEAPI LDAPMessage* LDAPAPI WLDAP32$ldap_first_entry(LDAP*, LDAPMessage*);
+WINBASEAPI LDAPMessage* LDAPAPI WLDAP32$ldap_next_entry(LDAP*, LDAPMessage*);
 WINBASEAPI char*        LDAPAPI WLDAP32$ldap_get_dn(LDAP*, LDAPMessage*);
 WINBASEAPI char**       LDAPAPI WLDAP32$ldap_get_values(LDAP*, LDAPMessage*, const char*);
 WINBASEAPI struct berval** LDAPAPI WLDAP32$ldap_get_values_len(LDAP*, LDAPMessage*, const char*);

