@@ -34,4 +34,5 @@ files = [
   "client/Modules/WmiSubscriptions/wmisubscriptions.py",
   "client/Modules/Gpresult/gpresult.py",
   "client/Modules/Timestomp/timestomp.py",
-  "client/Modules/TgtMonitor/tgtmonitor.py"]
+  "client/Modules/TgtMonitor/tgtmonitor.py",
+  "client/Modules/StandIn/standin.py"]

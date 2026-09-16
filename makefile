@@ -176,6 +176,16 @@ bof-build:
 			-I client/Modules/TgtMonitor/include -Wall -Werror -Os -D_NO_NTDLL_CRT_ && \
 		echo "  -> TgtMonitor OK"; \
 	fi
+	@ mkdir -p client/Modules/StandIn/bin
+	@ if [ -f client/Modules/StandIn/src/entry.c ]; then \
+		$(MINGW_CC)     -o client/Modules/StandIn/bin/standin.x64.o \
+			-c client/Modules/StandIn/src/entry.c \
+			-I client/Modules/StandIn/include -DBOF -Os -fno-builtin && \
+		$(MINGW_CC_x86) -o client/Modules/StandIn/bin/standin.x86.o \
+			-c client/Modules/StandIn/src/entry.c \
+			-I client/Modules/StandIn/include -DBOF -Os -fno-builtin && \
+		echo "  -> StandIn OK"; \
+	fi
 	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
 		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
 		echo "  -> UacBonanza (7 UAC bypass BOFs) OK"; \
