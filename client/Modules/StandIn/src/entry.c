@@ -81,6 +81,10 @@ static void bprintf(const char* fmt, ...)
 #define LDAP_CONTROL_TREE_DELETE_OID "1.2.840.113556.1.4.805"
 #endif
 
+#ifndef LDAP_SERVER_SD_FLAGS_OID
+#define LDAP_SERVER_SD_FLAGS_OID "1.2.840.113556.1.4.801"
+#endif
+
 static int  strtol_ascii(const char* s);
 static void strcat_safe(char* dst, size_t dstSz, const char* src);
 
@@ -701,7 +705,20 @@ static void OpGetAcl(const char* filter)
     LDAPMessage* res = NULL;
     LDAPMessage* e   = NULL;
     PCHAR  attrs[]   = { "ntSecurityDescriptor", NULL };
-    ULONG  rc = WLDAP32$ldap_search_s(g_ld, dn, LDAP_SCOPE_BASE, "(objectClass=*)", attrs, 0, &res);
+    ULONG  rc;
+
+    /* ntSecurityDescriptor is a constructed attribute; request
+     * owner|group|dacl via the SD_FLAGS control or the DC returns an empty
+     * value. */
+    {
+        unsigned char flags[4] = { 0x07, 0x00, 0x00, 0x00 };
+        struct berval ctlval = { 4, (char*)flags };
+        LDAPControl  ctl     = { LDAP_SERVER_SD_FLAGS_OID, ctlval, TRUE };
+        PLDAPControl sctrls[] = { &ctl, NULL };
+
+        rc = WLDAP32$ldap_search_ext_s(g_ld, dn, LDAP_SCOPE_BASE, "(objectClass=*)",
+                                       attrs, 0, sctrls, NULL, NULL, 0, &res);
+    }
     if (rc != LDAP_SUCCESS || !res) {
         bprintf("[!] Failed to read ntSecurityDescriptor (0x%lx): %s\n", rc, WLDAP32$ldap_err2string(rc));
         WLDAP32$ldap_memfree(dn);
