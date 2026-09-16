@@ -55,7 +55,7 @@ def standin_cmd(demonID, *param):
     user     = values["--user"]
     passw    = values["--pass"]
 
-    bools = [p for p in param if p in ("--make", "--disable", "--delete", "--remove")]
+    bools = [p for p in param if p in ("--make", "--disable", "--delete", "--remove", "--access")]
     if "--make" in bools:
         mode, opname = 0, "create machine account"
     elif "--disable" in bools:
@@ -66,13 +66,15 @@ def standin_cmd(demonID, *param):
         mode, opname = 3, "set msDS-AllowedToActOnBehalfOfOtherIdentity"
     elif "--remove" in bools:
         mode, opname = 4, "remove msDS-AllowedToActOnBehalfOfOtherIdentity"
+    elif obj and "--access" in bools:
+        mode, opname = 6, "list object access permissions"
     elif obj:
         mode, opname = 5, "fetch object SID"
     else:
         demon.ConsoleWrite(demon.CONSOLE_ERROR,
             "Usage:\n"
             "  standin --computer <name> --make | --disable | --delete | --sid <SID> | --remove\n"
-            "  standin --object <ldap-filter>\n"
+            "  standin --object <ldap-filter> [--access]\n"
             "  [--domain <d> --user <u> --pass <p>]")
         return False
 
@@ -124,6 +126,10 @@ STANDIN_HELP = (
     "  standin --object <ldap-filter>\n"
     "      Resolve an LDAP filter and print sAMAccountName + objectSid\n"
     "      (use it to get the SID of a machine account you just --make'd).\n"
+    "  standin --object <ldap-filter> --access\n"
+    "      Read the object's DACL and flag which principals hold the\n"
+    "      RBCD-enabling rights (GenericAll/GenericWrite/WriteDacl/\n"
+    "      WriteOwner/WriteProperty).\n"
     "\n"
     "OPTIONAL (alternate credentials / target domain):\n"
     "  --domain <d>  Domain (NetBIOS or DNS). Selects the DC; with --user/\n"
@@ -134,6 +140,7 @@ STANDIN_HELP = (
     "EXAMPLES:\n"
     "  standin --computer Innsmouth --make\n"
     "  standin --object samaccountname=Innsmouth$\n"
+    "  standin --object samaccountname=HWKSTN2$ --access\n"
     "  standin --computer Providence --sid S-1-5-21-1085031214-1563985344-725345543-2611\n"
     "  standin --computer Providence --remove\n"
     "  standin --computer Arkham --disable\n"
