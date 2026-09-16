@@ -75,6 +75,7 @@ static void bprintf(const char* fmt, ...)
 #define MODE_SID     3
 #define MODE_REMOVE  4
 #define MODE_OBJECT  5
+#define MODE_ACL     6
 
 #ifndef LDAP_CONTROL_TREE_DELETE_OID
 #define LDAP_CONTROL_TREE_DELETE_OID "1.2.840.113556.1.4.805"
@@ -596,6 +597,131 @@ static void OpGetSid(const char* filter)
         bprintf("\n[+] %d object(s) found\n", count);
 }
 
+/* ---- op: list object DACL, flagging RBCD-capable principals ---- */
+static void LookupSidName(const unsigned char* sid, int sidLen, char* out, int outSz)
+{
+    char  name[256], domain[256];
+    DWORD nameLen = sizeof(name), domainLen = sizeof(domain);
+    SID_NAME_USE use;
+
+    if (ADVAPI32$LookupAccountSidA(NULL, (PSID)(void*)sid, name, &nameLen, domain, &domainLen, &use)) {
+        if (domain[0])
+            MSVCRT$sprintf(out, "%s\\%s", domain, name);
+        else
+            MSVCRT$sprintf(out, "%s", name);
+    } else {
+        FormatSid(sid, sidLen, out, outSz);
+    }
+}
+
+static void ParseDacl(const unsigned char* sd, int sdLen)
+{
+    DWORD daclOff;
+    WORD  aceCount;
+    const unsigned char* ace;
+    int   i, listed = 0;
+
+    if (sdLen < 20) { bprintf("[!] Security descriptor too short\n"); return; }
+
+    daclOff = (DWORD)sd[16] | ((DWORD)sd[17] << 8) | ((DWORD)sd[18] << 16) | ((DWORD)sd[19] << 24);
+    if (daclOff == 0 || daclOff + 8 > (DWORD)sdLen) {
+        bprintf("[!] No DACL present\n");
+        return;
+    }
+
+    ace = sd + daclOff + 8;   /* skip the 8-byte ACL header */
+    aceCount = (WORD)(sd[daclOff + 4] | (sd[daclOff + 5] << 8));
+
+    for (i = 0; i < aceCount; i++) {
+        BYTE  aceType;
+        WORD  aceSize;
+        DWORD mask;
+        const unsigned char* sidPtr = NULL;
+        BOOL  rbcd = FALSE;
+        char  sidstr[256];
+        char  name[512];
+
+        if ((int)(ace - sd) + 4 > sdLen) break;
+        aceType = ace[0];
+        aceSize = (WORD)(ace[2] | (ace[3] << 8));
+        if (aceSize < 12 || (int)(ace - sd) + aceSize > sdLen) break;
+
+        mask = (DWORD)ace[4] | ((DWORD)ace[5] << 8) | ((DWORD)ace[6] << 16) | ((DWORD)ace[7] << 24);
+
+        if (aceType == 0) {                 /* ACCESS_ALLOWED_ACE */
+            sidPtr = ace + 8;
+        } else if (aceType == 5) {          /* ACCESS_ALLOWED_OBJECT_ACE */
+            sidPtr = ace + 44;
+        } else {
+            ace += aceSize;
+            continue;
+        }
+
+        if (aceSize < 12 || (int)(sidPtr - sd) + 8 > sdLen) { ace += aceSize; continue; }
+        {
+            int subCount = sidPtr[1];
+            int sidLen = 8 + 4 * subCount;
+            FormatSid(sidPtr, sidLen, sidstr, sizeof(sidstr));
+            LookupSidName(sidPtr, sidLen, name, sizeof(name));
+        }
+
+        {
+            const char* flags[8];
+            int nf = 0;
+            if (mask & 0x10000000) { flags[nf++] = "GenericAll";   rbcd = TRUE; }
+            if (mask & 0x40000000) { flags[nf++] = "GenericWrite"; rbcd = TRUE; }
+            if (mask & 0x40000)    { flags[nf++] = "WriteDacl";    rbcd = TRUE; }
+            if (mask & 0x80000)    { flags[nf++] = "WriteOwner";   rbcd = TRUE; }
+            if (mask & 0x20)       { flags[nf++] = "WriteProperty"; }
+            if (mask & 0x100)      { flags[nf++] = "ExtendedRight"; }
+
+            bprintf("%s %s  (mask 0x%08lx)", rbcd ? "[+]" : "[ ]", name, mask);
+            if (nf > 0) {
+                int k;
+                bprintf(" |");
+                for (k = 0; k < nf; k++) bprintf(" %s", flags[k]);
+            }
+            bprintf("\n");
+            if (rbcd) listed++;
+        }
+
+        ace += aceSize;
+    }
+
+    bprintf("\n[*] %d RBCD-capable principal(s) found\n", listed);
+}
+
+static void OpGetAcl(const char* filter)
+{
+    PCHAR dn = FindObjectDn(filter);
+    if (!dn) { bprintf("[!] Object not found..\n"); return; }
+
+    bprintf("[?] Object : %s\n", dn);
+
+    LDAPMessage* res = NULL;
+    LDAPMessage* e   = NULL;
+    PCHAR  attrs[]   = { "ntSecurityDescriptor", NULL };
+    ULONG  rc = WLDAP32$ldap_search_s(g_ld, dn, LDAP_SCOPE_BASE, "(objectClass=*)", attrs, 0, &res);
+    if (rc != LDAP_SUCCESS || !res) {
+        bprintf("[!] Failed to read ntSecurityDescriptor (0x%lx): %s\n", rc, WLDAP32$ldap_err2string(rc));
+        WLDAP32$ldap_memfree(dn);
+        return;
+    }
+
+    e = WLDAP32$ldap_first_entry(g_ld, res);
+    if (e) {
+        struct berval** sdvals = WLDAP32$ldap_get_values_len(g_ld, e, "ntSecurityDescriptor");
+        if (sdvals && sdvals[0] && sdvals[0]->bv_val && sdvals[0]->bv_len >= 20)
+            ParseDacl((const unsigned char*)sdvals[0]->bv_val, (int)sdvals[0]->bv_len);
+        else
+            bprintf("[!] ntSecurityDescriptor empty/unreadable\n");
+        if (sdvals) WLDAP32$ldap_value_free_len(sdvals);
+    }
+
+    WLDAP32$ldap_msgfree(res);
+    WLDAP32$ldap_memfree(dn);
+}
+
 /* ---- entry ---- */
 void go(char* args, int len)
 {
@@ -653,6 +779,7 @@ void go(char* args, int len)
         case MODE_SID:     OpSetRBCD(computer, sid);  break;
         case MODE_REMOVE:  OpRemoveRBCD(computer);    break;
         case MODE_OBJECT:  OpGetSid(computer);        break;
+        case MODE_ACL:     OpGetAcl(computer);        break;
         default:           bprintf("[-] Unknown mode %d\n", mode); break;
     }
 
