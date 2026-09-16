@@ -74,6 +74,7 @@ static void bprintf(const char* fmt, ...)
 #define MODE_DELETE  2
 #define MODE_SID     3
 #define MODE_REMOVE  4
+#define MODE_OBJECT  5
 
 #ifndef LDAP_CONTROL_TREE_DELETE_OID
 #define LDAP_CONTROL_TREE_DELETE_OID "1.2.840.113556.1.4.805"
@@ -531,6 +532,70 @@ static void strcat_safe(char* dst, size_t dstSz, const char* src)
     dst[d] = '\0';
 }
 
+/* ---- op: fetch objectSid (resolve a name/filter to a SID) ---- */
+static void FormatSid(const unsigned char* sid, int len, char* out, int outSz)
+{
+    int   rev  = sid[0];
+    int   nSub = sid[1];
+    ULONG auth = ((ULONG)sid[4] << 24) | ((ULONG)sid[5] << 16) | ((ULONG)sid[6] << 8) | (ULONG)sid[7];
+    int   pos  = 0;
+    int   i;
+
+    pos = MSVCRT$sprintf(out, "S-%d-%lu", rev, auth);
+
+    for (i = 0; i < nSub; i++) {
+        if (8 + i * 4 + 4 > len || pos >= outSz - 16) break;
+        ULONG sub = (ULONG)sid[8 + i*4]
+                  | ((ULONG)sid[8 + i*4 + 1] << 8)
+                  | ((ULONG)sid[8 + i*4 + 2] << 16)
+                  | ((ULONG)sid[8 + i*4 + 3] << 24);
+        pos += MSVCRT$sprintf(out + pos, "-%lu", sub);
+    }
+}
+
+static void OpGetSid(const char* filter)
+{
+    LDAPMessage* res = NULL;
+    LDAPMessage* e   = NULL;
+    PCHAR  attrs[]   = { "sAMAccountName", "objectSid", NULL };
+    ULONG  rc;
+    int    count = 0;
+
+    rc = WLDAP32$ldap_search_s(g_ld, g_base, LDAP_SCOPE_SUBTREE, filter, attrs, 0, &res);
+    if (rc != LDAP_SUCCESS || !res) {
+        bprintf("[!] LDAP search failed (0x%lx): %s\n", rc, WLDAP32$ldap_err2string(rc));
+        return;
+    }
+
+    for (e = WLDAP32$ldap_first_entry(g_ld, res); e; e = WLDAP32$ldap_next_entry(g_ld, e)) {
+        PCHAR dn = WLDAP32$ldap_get_dn(g_ld, e);
+        PCHAR* sams = WLDAP32$ldap_get_values(g_ld, e, "sAMAccountName");
+        struct berval** sids = WLDAP32$ldap_get_values_len(g_ld, e, "objectSid");
+
+        bprintf("\n[?] Object : %s\n", dn ? dn : "(none)");
+        if (sams && sams[0])
+            bprintf("    |_ sAMAccountName : %s\n", sams[0]);
+
+        if (sids && sids[0] && sids[0]->bv_val && sids[0]->bv_len >= 8) {
+            char sidstr[256];
+            FormatSid((const unsigned char*)sids[0]->bv_val, (int)sids[0]->bv_len, sidstr, sizeof(sidstr));
+            bprintf("    |_ objectSid      : %s\n", sidstr);
+        }
+
+        if (sams) WLDAP32$ldap_value_free(sams);
+        if (sids) WLDAP32$ldap_value_free_len(sids);
+        if (dn)   WLDAP32$ldap_memfree(dn);
+        count++;
+    }
+
+    WLDAP32$ldap_msgfree(res);
+
+    if (count == 0)
+        bprintf("[!] Object not found..\n");
+    else
+        bprintf("\n[+] %d object(s) found\n", count);
+}
+
 /* ---- entry ---- */
 void go(char* args, int len)
 {
@@ -555,7 +620,7 @@ void go(char* args, int len)
     pass     = BeaconDataExtract(&parser, NULL);
 
     if (!computer || computer[0] == '\0') {
-        bprintf("[-] No computer name supplied\n");
+        bprintf("[-] No target supplied\n");
         goto done;
     }
 
@@ -587,6 +652,7 @@ void go(char* args, int len)
         case MODE_DELETE:  OpDelete(computer);        break;
         case MODE_SID:     OpSetRBCD(computer, sid);  break;
         case MODE_REMOVE:  OpRemoveRBCD(computer);    break;
+        case MODE_OBJECT:  OpGetSid(computer);        break;
         default:           bprintf("[-] Unknown mode %d\n", mode); break;
     }
 
