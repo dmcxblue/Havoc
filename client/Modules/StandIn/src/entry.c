@@ -711,9 +711,9 @@ static void OpGetAcl(const char* filter)
      * owner|group|dacl via the SD_FLAGS control or the DC returns an empty
      * value. */
     {
-        unsigned char flags[3] = { 0x02, 0x01, 0x07 };  /* BER INTEGER 7 = OWNER|GROUP|DACL */
-        struct berval ctlval = { 3, (char*)flags };
-        LDAPControl  ctl     = { LDAP_SERVER_SD_FLAGS_OID, ctlval, TRUE };
+        unsigned char flags[4] = { 0x07, 0x00, 0x00, 0x00 };  /* OWNER|GROUP|DACL, little-endian */
+        struct berval ctlval = { 4, (char*)flags };
+        LDAPControl  ctl     = { LDAP_SERVER_SD_FLAGS_OID, ctlval, FALSE };
         PLDAPControl sctrls[] = { &ctl, NULL };
 
         rc = WLDAP32$ldap_search_ext_s(g_ld, dn, LDAP_SCOPE_BASE, "(objectClass=*)",
