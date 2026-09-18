@@ -35,4 +35,5 @@ files = [
   "client/Modules/Gpresult/gpresult.py",
   "client/Modules/Timestomp/timestomp.py",
   "client/Modules/TgtMonitor/tgtmonitor.py",
-  "client/Modules/StandIn/standin.py"]
+  "client/Modules/StandIn/standin.py",
+  "client/Modules/AclPwn/aclpwn.py"]

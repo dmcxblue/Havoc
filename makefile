@@ -186,6 +186,16 @@ bof-build:
 			-I client/Modules/StandIn/include -DBOF -Os -fno-builtin && \
 		echo "  -> StandIn OK"; \
 	fi
+	@ mkdir -p client/Modules/AclPwn/bin
+	@ if [ -f client/Modules/AclPwn/src/entry.c ]; then \
+		$(MINGW_CC)     -o client/Modules/AclPwn/bin/aclpwn.x64.o \
+			-c client/Modules/AclPwn/src/entry.c \
+			-I client/Modules/AclPwn/include -DBOF -Os -fno-builtin && \
+		$(MINGW_CC_x86) -o client/Modules/AclPwn/bin/aclpwn.x86.o \
+			-c client/Modules/AclPwn/src/entry.c \
+			-I client/Modules/AclPwn/include -DBOF -Os -fno-builtin && \
+		echo "  -> AclPwn OK"; \
+	fi
 	@ if [ -f client/Modules/UacBonanza/repo/Makefile ]; then \
 		$(MAKE) --no-print-directory -C client/Modules/UacBonanza/repo bof >/dev/null 2>&1 && \
 		echo "  -> UacBonanza (7 UAC bypass BOFs) OK"; \
