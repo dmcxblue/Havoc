@@ -36,4 +36,7 @@ files = [
   "client/Modules/Timestomp/timestomp.py",
   "client/Modules/TgtMonitor/tgtmonitor.py",
   "client/Modules/StandIn/standin.py",
-  "client/Modules/AclPwn/aclpwn.py"]
+  "client/Modules/AclPwn/aclpwn.py",
+  "client/Modules/mimikatz/mimikatz.py",
+  "client/Modules/skeletonkey/skeletonkey.py",
+  "client/Modules/LapsRead/lapsread.py"]

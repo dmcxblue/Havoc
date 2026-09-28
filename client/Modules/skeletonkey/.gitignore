@@ -1,0 +1,6 @@
+# build artifacts
+BOF/obj/
+*.o
+__pycache__/
+*.pyc
+*.ccache

@@ -171,6 +171,8 @@ STANDIN_HELP = (
     "  standin --computer Innsmouth --make --domain redhook --user RFludd --pass 'Cl4vi$Alchemi4e'\n"
 )
 
-RegisterCommand(standin_cmd, "", "standin", STANDIN_HELP, 0,
-                "--computer <name> (...) | --object <ldap-filter>",
+RegisterCommand(standin_cmd, "", "standin",
+                "RBCD primitives over LDAP: machine accounts, msDS-AllowedToActOnBehalfOfOtherIdentity, encryption types.",
+                0,
+                STANDIN_HELP,
                 "--computer Innsmouth --make")

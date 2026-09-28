@@ -478,7 +478,24 @@ BOOL CoffeeProcessSections( PCOFFEE Coffee )
             // type of the symbol
             SymbolType = Symbol->Type;
 
-            if ( ! CoffeeProcessSymbol( Coffee, SymbolName, SymbolType, &FuncPtr ) )
+            // COFF symbols with SectionNumber > 0 are defined inside this BOF
+            // (function OR data). Skip DFR lookup and let the FuncPtr == NULL
+            // branches below patch the reloc with SymbolSectionAddr + addend.
+            // Without this, cross-TU function calls emitted by `ld -r` (e.g.
+            // the mimikatz port's shim/CRT helpers) fail as "Symbol not found"
+            // because CoffeeProcessSymbol only accepts internal DATA symbols.
+            //
+            // Also fold in Symbol->Value: for a function (or data) at non-zero
+            // offset inside its section, the section base is not the symbol's
+            // address — the offset within the section must be added. Without
+            // this every intra-object call to a non-first function jumps to
+            // the section base instead of the target (infinite recursion).
+            if ( Symbol->SectionNumber > 0 )
+            {
+                FuncPtr           = NULL;
+                SymbolSectionAddr = ( PVOID ) ( U_PTR( SymbolSectionAddr ) + Symbol->Value );
+            }
+            else if ( ! CoffeeProcessSymbol( Coffee, SymbolName, SymbolType, &FuncPtr ) )
             {
                 PRINTF( "Symbol '%s' couldn't be resolved\n", SymbolName );
                 return FALSE;
@@ -769,7 +786,12 @@ VOID CoffeeLdr( PCHAR EntryName, PVOID CoffeeData, PVOID ArgData, SIZE_T ArgSize
 
         PRINTF( "Coffee->SecMap[ %d ].Ptr => %p\n", SecCnt, Coffee->SecMap[ SecCnt ].Ptr )
 
-        MemCopy( Coffee->SecMap[ SecCnt ].Ptr, C_PTR( U_PTR( CoffeeData ) + Coffee->Section->PointerToRawData ), Coffee->Section->SizeOfRawData );
+        /* .bss sections have PointerToRawData == 0 (no raw data in the file); skip
+         * the copy so the VirtualAlloc'd region stays zero-initialized. Copying
+         * SizeOfRawData bytes from offset 0 would overwrite .bss with COFF header
+         * bytes and corrupt every zero-initialized global. */
+        if ( Coffee->Section->PointerToRawData > 0 )
+            MemCopy( Coffee->SecMap[ SecCnt ].Ptr, C_PTR( U_PTR( CoffeeData ) + Coffee->Section->PointerToRawData ), Coffee->Section->SizeOfRawData );
     }
 
     // the FunMap is stored directly after the BOF

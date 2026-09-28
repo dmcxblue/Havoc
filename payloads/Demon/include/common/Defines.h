@@ -333,6 +333,7 @@
 #define H_COFFAPI_GETMODULEHANDLE                 0x5a153f58
 #define H_COFFAPI_FREELIBRARY                     0x30eece3c
 #define H_COFFAPI_LOCALFREE                       0xa66df372
+#define H_COFFAPI_LOCALALLOC                      0x73cebc5b
 
 #define H_COFFAPI_NTOPENTHREAD                    0xfb8a31d1
 #define H_COFFAPI_NTOPENPROCESS                   0x5003c058
