@@ -60,8 +60,9 @@ loot/
 *.log
 tasks/
 
-# All Markdown is private except the module-development guide
-*.md
-!client/Modules/MODULE_DEVELOPMENT.md
-!/README.md
-!/README.md
+# Personal prompts / research / engagement notes — never track
+# (project & tool docs, incl. READMEs, ARE tracked)
+TODO.md
+client/Modules/Gpresult/PLAN-DOMAIN.md
+client/Modules/SSPMon/PLAN.md
+client/Modules/SSPMon/REBOOT_HANDOFF.md
