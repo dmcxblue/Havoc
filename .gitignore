@@ -53,3 +53,13 @@ __pycache__/
 *.swp
 *.swo
 *~
+
+# Operational / engagement data — never track (loot, logs, agent working notes)
+loot/
+*/loot/
+*.log
+tasks/
+
+# All Markdown is private except the module-development guide
+*.md
+!client/Modules/MODULE_DEVELOPMENT.md
