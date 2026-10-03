@@ -63,3 +63,5 @@ tasks/
 # All Markdown is private except the module-development guide
 *.md
 !client/Modules/MODULE_DEVELOPMENT.md
+!/README.md
+!/README.md
