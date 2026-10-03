@@ -1,0 +1,1 @@
+../mimikatz/modules/sekurlsa/kuhl_m_sekurlsa.h

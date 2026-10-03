@@ -1,0 +1,1 @@
+../mimikatz/modules/sekurlsa/globals_sekurlsa.h

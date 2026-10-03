@@ -1,0 +1,1 @@
+../mimikatz/modules/kuhl_m_lsadump.h

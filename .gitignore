@@ -33,24 +33,13 @@ havoc
 # ignore data directory
 data/
 
-# ignore upstream modules cloned at build time, but track custom ones
-client/Modules/*
-!client/Modules/Clipboard/
-!client/Modules/Keylogger/
-!client/Modules/Icacls/
-!client/Modules/PrivKit/
-!client/Modules/LiveDesktop/
-!client/Modules/UacCheck/
-!client/Modules/Bitsadmin/
-!client/Modules/PowerPick/
-!client/Modules/InvokeAssembly/
-!client/Modules/RemoteOps/
-client/Modules/RemoteOps/CS-Remote-OPs-BOF/
-!client/Modules/Packer/
-
 # OS files
 .DS_Store
 Thumbs.db
+
+# Claude / Pearce agent metadata — never track
+CLAUDE.md
+.claude/
 .pearce/
 
 # Python bytecode
