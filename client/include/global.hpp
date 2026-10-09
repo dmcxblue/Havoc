@@ -215,7 +215,7 @@ namespace HavocNamespace
 
     namespace Util
     {
-        typedef struct
+        struct SessionItem
         {
 
             QString TeamserverID;
@@ -254,7 +254,7 @@ namespace HavocNamespace
 
             void Export();
             void Remove();
-        } SessionItem;
+        };
 
         typedef struct
         {
