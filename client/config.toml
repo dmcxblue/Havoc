@@ -42,6 +42,6 @@ files = [
   "client/Modules/pth/pth.py",
   "client/Modules/overpass/overpass.py",
   "client/Modules/SSPMon/SSPMon.py",
-  "client/Modules/skeletonkey/skeletonkey.py",
+  "client/Modules/skeletonTicket/skeletonTicket.py",
   "client/Modules/LapsRead/lapsread.py",
   "client/Modules/BrowserData/browserdata.py"]

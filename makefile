@@ -211,6 +211,46 @@ bof-build:
 			echo "  -> RemoteOps extra: $$bof (source missing, skipped)"; \
 		fi; \
 	done
+	# --- custom modules with their own build systems ---
+	@ if [ -f client/Modules/asreproast/makefile ]; then \
+		$(MAKE) --no-print-directory -C client/Modules/asreproast >/dev/null 2>&1 && \
+		echo "  -> asreproast OK"; \
+	fi
+	@ if [ -f client/Modules/overpass/BOF/makefile ]; then \
+		$(MAKE) --no-print-directory -C client/Modules/overpass/BOF >/dev/null 2>&1 && \
+		echo "  -> overpass (overpass + kerb_ptt + kerb_purge, x64/x86) OK"; \
+	fi
+	@ if [ -f client/Modules/LapsRead/src/Makefile ]; then \
+		$(MAKE) --no-print-directory -C client/Modules/LapsRead/src >/dev/null 2>&1 && \
+		echo "  -> LapsRead OK"; \
+	fi
+	@ if [ -f client/Modules/BrowserData/browserdata-bof/Makefile ]; then \
+		$(MAKE) --no-print-directory -C client/Modules/BrowserData/browserdata-bof bof bofx86 >/dev/null 2>&1 && \
+		mkdir -p client/Modules/BrowserData/bin && \
+		cp client/Modules/BrowserData/browserdata-bof/dist/browserdata.x64.o client/Modules/BrowserData/bin/ && \
+		cp client/Modules/BrowserData/browserdata-bof/dist/browserdata.x86.o client/Modules/BrowserData/bin/ && \
+		echo "  -> BrowserData (x64/x86) OK"; \
+	fi
+	@ if [ -f client/Modules/logonpasswords/BOF/build.sh ]; then \
+		( cd client/Modules/logonpasswords/BOF && bash build.sh sekurlsa >/dev/null 2>&1 ) && \
+		mkdir -p client/Modules/logonpasswords/bin && \
+		cp client/Modules/logonpasswords/BOF/sekurlsa_bof.o client/Modules/logonpasswords/bin/logonpasswords.x64.o && \
+		echo "  -> logonpasswords (mimikatz sekurlsa BOF) OK"; \
+	fi
+	@ if [ -f client/Modules/pth/BOF/build.sh ]; then \
+		( cd client/Modules/pth/BOF && bash build.sh >/dev/null 2>&1 ) && \
+		mkdir -p client/Modules/pth/bin && \
+		cp client/Modules/pth/BOF/pth_bof.o client/Modules/pth/bin/pth.x64.o && \
+		echo "  -> pth (mimikatz sekurlsa::pth BOF) OK"; \
+	fi
+	@ if [ -f client/Modules/skeletonTicket/BOF/build.sh ]; then \
+		( cd client/Modules/skeletonTicket/BOF && bash build.sh >/dev/null 2>&1 ) && \
+		echo "  -> skeletonTicket (mimikatz misc::skeleton BOF) OK"; \
+	fi
+	@ if [ -f client/Modules/SSPMon/build_bofs.sh ]; then \
+		( cd client/Modules/SSPMon && bash build_bofs.sh >/dev/null 2>&1 ) && \
+		echo "  -> SSPMon (ssp_install/remove/status/log BOFs) OK"; \
+	fi
 
 # cleanup target
 clean: ts-cleanup client-cleanup
