@@ -15,6 +15,7 @@ files = [
   "client/Modules/Jump-exec/ScShell/scshell.py",
   "client/Modules/Jump-exec/Psexec/psexec.py",
   "client/Modules/Jump-exec/WMI/wmi.py",
+  "client/Modules/Jump-exec/DCOM/dcom.py",
   "client/Modules/nanodump/nanodump.py",
   "client/Modules/nanorobeus/nanorobeus.py",
   "client/Modules/Bofbelt/bofbelt.py",
@@ -37,6 +38,10 @@ files = [
   "client/Modules/TgtMonitor/tgtmonitor.py",
   "client/Modules/StandIn/standin.py",
   "client/Modules/AclPwn/aclpwn.py",
-  "client/Modules/mimikatz/mimikatz.py",
+  "client/Modules/logonpasswords/logonpasswords.py",
+  "client/Modules/pth/pth.py",
+  "client/Modules/overpass/overpass.py",
+  "client/Modules/SSPMon/SSPMon.py",
   "client/Modules/skeletonkey/skeletonkey.py",
-  "client/Modules/LapsRead/lapsread.py"]
+  "client/Modules/LapsRead/lapsread.py",
+  "client/Modules/BrowserData/browserdata.py"]

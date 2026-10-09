@@ -355,13 +355,18 @@ def reg_set( demonID, *params ):
 
     if regstr in inttypes:
         try:
-            data = int( params[ params_parsed ] )
+            data = int( params[ params_parsed ], 0 )
             params_parsed += 1
             assert data <= 0xffffffff
         except Exception as e:
             demon.ConsoleWrite( demon.CONSOLE_ERROR, "Invalid data" )
             return False
-        packer.adduint32(data)
+        # BOF reads this via BeaconDataExtract which needs a LENGTH-PREFIXED
+        # buffer. The original adduint32 wrote 4 bare bytes, so the BOF read
+        # the DWORD value as the length header and extracted 0 bytes, writing
+        # an empty REG_DWORD. Use addbytes to prefix the 4 bytes with a length.
+        from struct import pack as _pack
+        packer.addbytes(_pack('<I', data))
     elif regstr == 'REG_MULTI_SZ':
         data = params[ params_parsed ]
         params_parsed += 1

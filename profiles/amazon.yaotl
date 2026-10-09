@@ -39,9 +39,9 @@ Listeners {
     Http {
         Name         = "RTOLab"
         # Hosts = callback address(es) baked into the demon — set to an IP the target can reach
-        Hosts        = ["192.168.1.5"]
+        Hosts        = ["192.168.1.17"]
         # HostBind = local bind address; 0.0.0.0 listens on all interfaces regardless of assigned IP
-        HostBind     = "192.168.1.5"
+        HostBind     = "192.168.1.17"
         HostRotation = "round-robin"
         PortBind     = 4434
         PortConn     = 4434

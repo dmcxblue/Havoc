@@ -17,6 +17,8 @@
  *
  * Modes (dispatched from gpresult.py):
  *   0 = all, 1 = user, 2 = computer
+ *   3 = domain — sweep every GPO-related ACE the caller's token holds
+ *       across the domain (see PLAN-DOMAIN.md; src/domain_enum.cpp)
  *
  * OUTPUT CONTRACT: buffered via bprintf(), flushed in ONE BeaconOutput.
  * BSTR discipline: every WMI string is SysAllocString/SysFreeString.
@@ -93,39 +95,11 @@ extern "C" {
     DECLSPEC_IMPORT size_t __cdecl MSVCRT$strlen(const char* s);
 }
 
-#define OUTBUFSIZE 65536
+#include "bofout.h"
+#include "domain_enum.h"
 
-/* ---- buffered output ---- */
-static char* g_out    = (char*)1;
-static int   g_outLen = 1;
-
-static void bflush(void)
-{
-    if (g_out != NULL && g_out != (char*)1 && g_outLen > 0)
-        BeaconOutput(CALLBACK_OUTPUT, g_out, g_outLen);
-    g_outLen = 0;
-    if (g_out != NULL && g_out != (char*)1)
-        g_out[0] = '\0';
-}
-
-static void bprintf(const char* fmt, ...)
-{
-    va_list ap;
-    char    tmp[2048];
-    int     n, remaining, toCopy;
-    if (g_out == NULL || g_out == (char*)1) return;
-    va_start(ap, fmt);
-    n = MSVCRT$vsnprintf(tmp, sizeof(tmp), fmt, ap);
-    va_end(ap);
-    if (n <= 0) return;
-    if (n >= (int)sizeof(tmp)) n = (int)sizeof(tmp) - 1;
-    if (g_outLen + n >= OUTBUFSIZE) bflush();
-    remaining = OUTBUFSIZE - g_outLen - 1;
-    toCopy    = (n < remaining) ? n : remaining;
-    MSVCRT$memcpy(g_out + g_outLen, tmp, (size_t)toCopy);
-    g_outLen += toCopy;
-    g_out[g_outLen] = '\0';
-}
+/* ---- buffered output: shared engine lives in src/bofout.cpp ---- */
+#define bprintf bof_printf
 
 /* ---- header globals ---- */
 static char g_computer[256];
@@ -591,14 +565,20 @@ void go(char* buff, int len)
     datap parser;
     int   mode;
 
-    g_out    = (char*)MSVCRT$calloc(OUTBUFSIZE, 1);
-    g_outLen = 0;
-    if (g_out) g_out[0] = '\0';
+    bof_output_init();
 
     BeaconDataParse(&parser, buff, len);
     mode = BeaconDataInt(&parser);
 
-    HRESULT hr = OLE32$CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    /* gpresult domain — LDAP + SMB sweep; no COM needed */
+    if (mode == 3) {
+        int verbose = BeaconDataInt(&parser);
+        GpresultDomainSweep(verbose);
+        goto done;
+    }
+
+    HRESULT hr;
+    hr = OLE32$CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     if (FAILED(hr)) {
         bprintf("[!] CoInitializeEx failed: 0x%08x\n", (unsigned)hr);
         goto done;
@@ -633,9 +613,6 @@ void go(char* buff, int len)
     OLE32$CoUninitialize();
 
 done:
-    bflush();
-    if (g_out && g_out != (char*)1)
-        MSVCRT$free(g_out);
-    g_out    = (char*)1;
-    g_outLen = 1;
+    bof_flush();
+    bof_output_done();
 }
